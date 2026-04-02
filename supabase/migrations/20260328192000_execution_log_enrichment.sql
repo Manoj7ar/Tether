@@ -1,0 +1,4 @@
+ALTER TABLE public.execution_log
+ADD COLUMN IF NOT EXISTS correlation_id UUID,
+ADD COLUMN IF NOT EXISTS latency_ms INTEGER,
+ADD COLUMN IF NOT EXISTS result_json JSONB;

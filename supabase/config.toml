@@ -1,0 +1,31 @@
+project_id = "umlhisvetpoqezhqxzho"
+
+[functions.generate-manifest]
+verify_jwt = false
+
+[functions.auth0-token-vault]
+verify_jwt = false
+
+[functions.agent-action]
+verify_jwt = false
+
+[functions.calculate-trust-score]
+verify_jwt = false
+
+[functions.mcp-server]
+verify_jwt = false
+
+[functions.generate-policy]
+verify_jwt = false
+
+[functions.generate-nudges]
+verify_jwt = false
+
+[functions.step-up-complete]
+verify_jwt = false
+
+[functions.step-up-status]
+verify_jwt = false
+
+[functions.mission-approve]
+verify_jwt = false

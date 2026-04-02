@@ -9,14 +9,12 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { setSupabaseAccessTokenGetter } from "@/integrations/supabase/client";
 import {
   getAppConfig,
-  isStubAuthMode,
   type AppConfig,
 } from "@/lib/env";
 
@@ -55,9 +53,6 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
 });
 
-const STUB_AUTH_STORAGE_KEY = "tether:e2e-auth-user";
-const DEFAULT_STUB_TOKEN = "e2e-auth-token";
-
 function mapAuth0User(user: Auth0SdkUser | undefined): AuthUser | null {
   if (!user?.sub) return null;
 
@@ -68,51 +63,6 @@ function mapAuth0User(user: Auth0SdkUser | undefined): AuthUser | null {
     picture: user.picture,
     sub: user.sub,
   };
-}
-
-function StubAuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(() => {
-    if (typeof window === "undefined") return null;
-
-    const raw = window.localStorage.getItem(STUB_AUTH_STORAGE_KEY);
-    if (!raw) return null;
-
-    try {
-      return JSON.parse(raw) as AuthUser;
-    } catch {
-      return null;
-    }
-  });
-  const navigate = useNavigate();
-
-  useEffect(() => {
-    setSupabaseAccessTokenGetter(user ? async () => DEFAULT_STUB_TOKEN : null);
-  }, [user]);
-
-  const value = useMemo<AuthContextType>(() => ({
-    getAccessToken: async () => DEFAULT_STUB_TOKEN,
-    isAuthenticated: !!user,
-    loading: false,
-    login: async ({ returnTo } = {}) => {
-      const stubUser: AuthUser = {
-        email: "operator@tether.test",
-        id: "auth0|e2e-operator",
-        name: "E2E Operator",
-        sub: "auth0|e2e-operator",
-      };
-      window.localStorage.setItem(STUB_AUTH_STORAGE_KEY, JSON.stringify(stubUser));
-      setUser(stubUser);
-      navigate(returnTo || "/dashboard", { replace: true });
-    },
-    resetPassword: async () => {},
-    signOut: async () => {
-      window.localStorage.removeItem(STUB_AUTH_STORAGE_KEY);
-      setUser(null);
-    },
-    user,
-  }), [navigate, user]);
-
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 function AuthBridge({
@@ -226,9 +176,5 @@ function Auth0ProviderWithRouter({ children }: { children: ReactNode }) {
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  if (isStubAuthMode()) {
-    return <StubAuthProvider>{children}</StubAuthProvider>;
-  }
-
   return <Auth0ProviderWithRouter>{children}</Auth0ProviderWithRouter>;
 }

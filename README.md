@@ -293,14 +293,11 @@ Open the URL printed by Vite (typically `http://localhost:5173`).
 | `VITE_SUPABASE_URL` | Yes | Supabase project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase anon (publishable) key |
 | `VITE_SUPABASE_PROJECT_ID` | Optional | Used to build default functions URL when present |
-| `VITE_AUTH0_DOMAIN` | Yes* | Auth0 tenant domain |
-| `VITE_AUTH0_CLIENT_ID` | Yes* | Auth0 application client ID |
+| `VITE_AUTH0_DOMAIN` | Yes | Auth0 tenant domain |
+| `VITE_AUTH0_CLIENT_ID` | Yes | Auth0 application client ID |
 | `VITE_AUTH0_AUDIENCE` | Optional | API audience for access tokens |
 | `VITE_AUTH0_SCOPE` | Optional | OAuth scopes for SPA |
 | `VITE_AUTH0_DATABASE_CONNECTION` | Optional | Connection name for password reset API |
-| `VITE_E2E_AUTH_MODE` | Optional | Set to `stub` for Playwright E2E without Auth0 |
-
-\*Not required when `VITE_E2E_AUTH_MODE=stub`.
 
 ### Supabase Edge Function secrets
 
@@ -466,8 +463,6 @@ RLS is enabled on user-owned tables; Edge Functions use the **service role** onl
 | `npm run preview` | Preview production build |
 | `npm run lint` | ESLint |
 | `npm run test` | Vitest unit tests |
-| `npm run e2e` | Playwright E2E (uses mocked Supabase in repo) |
-| `npm run test:all` | Unit tests + E2E |
 
 ---
 

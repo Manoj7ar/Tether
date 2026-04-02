@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { getAppConfig, isStubAuthMode } from "@/lib/env";
+import { getAppConfig } from "@/lib/env";
 import type { MissionPermission } from "@/hooks/useMissions";
 import {
   getCapableActionIdsFromPermissions,
@@ -72,14 +72,12 @@ export function useStepUpStatus(missionId: string | undefined) {
 
       return (data.verification as StepUpVerification | null) ?? null;
     },
-    enabled: !!missionId && !isStubAuthMode(),
+    enabled: !!missionId,
     refetchInterval: 15_000,
   });
 }
 
 export function useMissionStepUpGate(missionId: string | undefined, permissions: MissionPermission[]) {
-  const stub = isStubAuthMode();
-
   const capableIds = useMemo(
     () =>
       getCapableActionIdsFromPermissions(
@@ -92,26 +90,22 @@ export function useMissionStepUpGate(missionId: string | undefined, permissions:
   const needsGithubRaw = capableIds.includes("github.delete_repo");
   const needsGoogleRaw = capableIds.includes("gmail.download_all");
 
-  const { data: verification, isLoading } = useStepUpStatus(stub ? undefined : missionId);
+  const { data: verification, isLoading } = useStepUpStatus(missionId);
 
-  const needsStepUp = stub ? false : needsStepUpRaw;
-  const needsGithub = stub ? false : needsGithubRaw;
-  const needsGoogle = stub ? false : needsGoogleRaw;
+  const githubOk = !needsGithubRaw || Boolean(verification?.github_verified_at);
+  const googleOk = !needsGoogleRaw || Boolean(verification?.google_verified_at);
 
-  const githubOk = stub || !needsGithubRaw || Boolean(verification?.github_verified_at);
-  const googleOk = stub || !needsGoogleRaw || Boolean(verification?.google_verified_at);
-
-  const satisfied = stub || !needsStepUpRaw || (githubOk && googleOk);
+  const satisfied = !needsStepUpRaw || (githubOk && googleOk);
 
   return {
-    needsStepUp,
-    needsGithub,
-    needsGoogle,
+    needsStepUp: needsStepUpRaw,
+    needsGithub: needsGithubRaw,
+    needsGoogle: needsGoogleRaw,
     githubOk,
     googleOk,
     satisfied,
-    isLoading: stub ? false : isLoading,
-    verification: stub ? null : verification,
+    isLoading,
+    verification,
   };
 }
 

@@ -5,7 +5,6 @@ import {
   readPendingStepUp,
   clearPendingStepUp,
 } from "@/hooks/useStepUp";
-import { isStubAuthMode } from "@/lib/env";
 import { toast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/error-utils";
 
@@ -19,8 +18,6 @@ export default function StepUpOAuthReturn() {
   const attemptKey = useRef<string | null>(null);
 
   useEffect(() => {
-    if (isStubAuthMode()) return;
-
     const pending = readPendingStepUp();
     if (!pending) {
       attemptKey.current = null;

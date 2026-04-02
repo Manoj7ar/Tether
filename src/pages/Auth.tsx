@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import authLoginBg from "@/assets/auth-nature.jpg";
 import authSignupBg from "@/assets/auth-signup-nature.jpg";
-import TetherLogo from "@/components/TetherLogo";
+import TetherLogo from "@/components/layout/TetherLogo";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/hooks/useAuth";

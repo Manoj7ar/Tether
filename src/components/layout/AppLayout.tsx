@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { NavLink } from "@/components/NavLink";
-import TetherLogo from "@/components/TetherLogo";
+import { NavLink } from "@/components/layout/NavLink";
+import TetherLogo from "@/components/layout/TetherLogo";
 import { useAuth } from "@/hooks/useAuth";
 import {
   Sidebar,
@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Home, Plus, List, LinkIcon, Shield, Settings } from "lucide-react";
 import { ReactNode } from "react";
-import NotificationBell from "@/components/NotificationBell";
+import NotificationBell from "@/components/layout/NotificationBell";
 
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: Home },

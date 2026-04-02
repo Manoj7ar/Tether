@@ -7,9 +7,9 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { useMissionNotifications } from "@/hooks/useNotifications";
 import { DemoModeProvider } from "@/contexts/DemoModeContext";
-import ProtectedRoute from "@/components/ProtectedRoute";
-import AppLayout from "./components/AppLayout";
-import StepUpOAuthReturn from "@/components/StepUpOAuthReturn";
+import ProtectedRoute from "@/components/layout/ProtectedRoute";
+import AppLayout from "@/components/layout/AppLayout";
+import StepUpOAuthReturn from "@/components/security/StepUpOAuthReturn";
 
 const Landing = lazy(() => import("./pages/Landing"));
 const Auth = lazy(() => import("./pages/Auth"));

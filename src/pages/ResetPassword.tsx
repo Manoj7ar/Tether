@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import TetherLogo from "@/components/TetherLogo";
+import TetherLogo from "@/components/layout/TetherLogo";
 
 export default function ResetPassword() {
   return (

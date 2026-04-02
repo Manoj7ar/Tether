@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Lock, FileText, Shield, Eye, Zap, Clock, CheckCircle, ChevronDown, Activity, Smartphone, AlertTriangle, Github, ShieldOff, Ban, X, Check } from "lucide-react";
 import { motion, useScroll, useTransform } from "framer-motion";
 import { useRef } from "react";
-import TetherLogo from "@/components/TetherLogo";
+import TetherLogo from "@/components/layout/TetherLogo";
 import ghibliHero from "@/assets/ghibli-canyon.jpg";
 import ghibliDanger from "@/assets/ghibli-dark-forest.jpg";
 import ghibliSteps from "@/assets/ghibli-steps.jpg";

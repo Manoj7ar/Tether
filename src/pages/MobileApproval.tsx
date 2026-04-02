@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
 import { AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import TetherLogo from "@/components/TetherLogo";
+import TetherLogo from "@/components/layout/TetherLogo";
 import { useAuth } from "@/hooks/useAuth";
 import { useMissionPermissions, useUpdateMissionStatus, type Mission } from "@/hooks/useMissions";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/error-utils";
-import StepUpVerificationPanel from "@/components/StepUpVerificationPanel";
+import StepUpVerificationPanel from "@/components/security/StepUpVerificationPanel";
 import { useMissionStepUpGate } from "@/hooks/useStepUp";
 
 interface MissionManifest {

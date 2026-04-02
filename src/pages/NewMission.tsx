@@ -2,11 +2,11 @@ import { useState, useEffect } from "react";
 import { Sparkles, Shield } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
-import MissionManifestCard from "@/components/MissionManifestCard";
+import MissionManifestCard from "@/components/mission/MissionManifestCard";
 import { useCreateMission } from "@/hooks/useMissions";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import MissionTemplates, { MissionTemplate } from "@/components/MissionTemplates";
+import MissionTemplates, { MissionTemplate } from "@/components/mission/MissionTemplates";
 import { getErrorMessage } from "@/lib/error-utils";
 
 interface ManifestData {

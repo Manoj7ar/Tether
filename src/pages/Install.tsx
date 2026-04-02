@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Bell, Download, Smartphone, Check, Shield } from "lucide-react";
 import { useNotificationPermission } from "@/hooks/useNotifications";
-import TetherLogo from "@/components/TetherLogo";
+import TetherLogo from "@/components/layout/TetherLogo";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;

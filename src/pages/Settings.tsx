@@ -5,7 +5,7 @@ import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
 import { useUserSettings, useUpdateUserSettings } from "@/hooks/useUserSettings";
 import { toast } from "@/hooks/use-toast";
-import McpTestPanel from "@/components/McpTestPanel";
+import McpTestPanel from "@/components/agent/McpTestPanel";
 import { getErrorMessage } from "@/lib/error-utils";
 import { missionActionRegistry } from "../../shared/mission-actions";
 

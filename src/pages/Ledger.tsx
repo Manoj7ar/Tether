@@ -5,7 +5,7 @@ import { useState, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import MissionReplay from "@/components/MissionReplay";
+import MissionReplay from "@/components/mission/MissionReplay";
 import { getErrorMessage } from "@/lib/error-utils";
 import type { Json } from "@/integrations/supabase/types";
 

@@ -425,13 +425,19 @@ RLS is enabled on user-owned tables; Edge Functions use the **service role** onl
 
 ```
 src/
-├── pages/           # Routes (dashboard, missions, policy, settings, …)
-├── components/      # UI and feature components
-├── hooks/           # Auth, missions, step-up, token vault, …
-├── contexts/        # Demo mode
-├── integrations/    # Supabase client and generated types
-├── lib/             # Config and utilities
-└── assets/
+├── pages/              # Route screens
+├── components/
+│   ├── layout/         # App shell, nav, logo, notifications, auth gate
+│   ├── mission/        # Mission UI (manifest, ledger feed, replay, templates)
+│   ├── dashboard/      # Analytics, trust, nudges, ambient budget
+│   ├── security/       # Step-up OAuth return + verification panel
+│   ├── agent/          # MCP test console
+│   └── ui/               # shadcn primitives
+├── hooks/
+├── contexts/
+├── integrations/       # Supabase client and generated types
+├── lib/
+└── assets/             # Images referenced by the app (unused files removed)
 
 supabase/
 ├── functions/       # Edge Functions (see table above)

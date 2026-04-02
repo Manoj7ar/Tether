@@ -1,9 +1,9 @@
 import { useParams, Link } from "react-router-dom";
-import MissionManifestCard from "@/components/MissionManifestCard";
-import LiveExecutionFeed from "@/components/LiveExecutionFeed";
-import RequiredAccounts from "@/components/RequiredAccounts";
-import MissionSummaryModal from "@/components/MissionSummaryModal";
-import MissionReplay from "@/components/MissionReplay";
+import MissionManifestCard from "@/components/mission/MissionManifestCard";
+import LiveExecutionFeed from "@/components/mission/LiveExecutionFeed";
+import RequiredAccounts from "@/components/mission/RequiredAccounts";
+import MissionSummaryModal from "@/components/mission/MissionSummaryModal";
+import MissionReplay from "@/components/mission/MissionReplay";
 import { useMission, useMissionPermissions, useExecutionLog, useUpdateMissionStatus, useConnectedAccounts } from "@/hooks/useMissions";
 import { useRealtimeExecutionLog } from "@/hooks/useRealtimeExecutionLog";
 import { format } from "date-fns";
@@ -14,7 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Play, FileText, CheckCircle, XCircle, AlertTriangle as TriangleAlert } from "lucide-react";
 import { getErrorMessage } from "@/lib/error-utils";
-import StepUpVerificationPanel from "@/components/StepUpVerificationPanel";
+import StepUpVerificationPanel from "@/components/security/StepUpVerificationPanel";
 import { useMissionStepUpGate } from "@/hooks/useStepUp";
 
 interface MissionManifest {

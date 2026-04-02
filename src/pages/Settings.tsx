@@ -54,13 +54,21 @@ export default function Settings() {
   const handleAddAction = async () => {
     if (!newAction.trim()) return;
     const updated = [...ambientAllowedActions, newAction.trim()];
-    await updateSettings.mutateAsync({ ambient_allowed_actions: updated });
-    setNewAction("");
+    try {
+      await updateSettings.mutateAsync({ ambient_allowed_actions: updated });
+      setNewAction("");
+    } catch (error: unknown) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+    }
   };
 
   const handleRemoveAction = async (action: string) => {
     const updated = ambientAllowedActions.filter((a) => a !== action);
-    await updateSettings.mutateAsync({ ambient_allowed_actions: updated });
+    try {
+      await updateSettings.mutateAsync({ ambient_allowed_actions: updated });
+    } catch (error: unknown) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+    }
   };
 
   const copyEndpoint = () => {

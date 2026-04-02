@@ -444,6 +444,7 @@ RLS is enabled on user-owned tables; Edge Functions use the **service role** onl
 | `agent-action` | Enforcement, provider execution, logging |
 | `mcp-server` | MCP protocol and delegation to `agent-action` |
 | `mission-approve` | Approve pending missions with step-up checks |
+| `user-settings` | Read/update MCP & ambient settings (Auth0 JWT + service role; avoids RLS mismatch) |
 | `auth0-token-vault` | OAuth connect, reauth, disconnect, callback |
 | `step-up-complete` | Persist step-up after OAuth |
 | `step-up-status` | Read step-up state for UI |

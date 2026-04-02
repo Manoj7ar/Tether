@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.mission-approve]
 verify_jwt = false
+
+[functions.user-settings]
+verify_jwt = false

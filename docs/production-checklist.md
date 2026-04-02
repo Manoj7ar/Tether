@@ -18,6 +18,7 @@
 
 ## Deploy checks
 - Apply migrations (includes `step_up_verifications` for high-risk step-up).
+- Deploy the **`user-settings`** Edge Function (Settings page MCP / Ambient toggles call it with the Auth0 token).
 - Verify login, mission creation, approval, connected-account link, MCP test console, and **step-up re-auth** (GitHub / Google) on a mission that includes `github.delete_repo` or `gmail.download_all` permissions. OAuth callback may redirect to a `returnPath` (same origin, path-only) so users land back on the mission or `/approve` after reauth.
 - Verify Edge Functions reject missing or invalid bearer tokens.
 - Confirm Supabase RLS still isolates records by Auth0 subject after migration.

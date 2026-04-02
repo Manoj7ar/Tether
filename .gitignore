@@ -20,6 +20,9 @@ dist-ssr
 playwright-report/
 test-results/
 
+# Ephemeral MCP edge deploy bundle output
+.edge-deploy-bundles/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

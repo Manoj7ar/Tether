@@ -34,6 +34,7 @@ This project is designed for hackathons such as **[Authorized to Act](https://au
 - [How it works](#how-it-works)
 - [Features](#features)
 - [Architecture](#architecture)
+- [Auth0-centric architecture](#auth0-centric-architecture)
 - [Auth0 and Token Vault](#auth0-and-token-vault)
 - [Security model](#security-model)
 - [Tech stack](#tech-stack)
@@ -153,6 +154,65 @@ User describes task
 │  Token exchange / consent flows               missions, logs, RLS    │
 └────────────────────────────────────────────────────────────────────┘
 ```
+
+### Auth0-centric architecture
+
+The diagram below highlights **Auth0** for the **[Authorized to Act](https://authorizedtoact.devpost.com/)** narrative: **human identity**, **OAuth to providers** (Token Vault path), and **JWT verification** before any agent action runs. The agent sees only the user’s **Auth0-issued access token** for Tether APIs — never provider OAuth secrets.
+
+```mermaid
+flowchart TB
+  subgraph Browser["Browser — Tether SPA"]
+    SPA["React app<br/>@auth0/auth0-react"]
+  end
+
+  subgraph Auth0["Auth0 for AI Agents"]
+    UL["Universal Login"]
+    OAuth["OAuth / Token endpoint<br/>+ social connections"]
+    JWKS["JWKS<br/>(JWT verification)"]
+  end
+
+  subgraph Agent["AI agent"]
+    Tool["MCP or REST client"]
+  end
+
+  subgraph Supabase["Supabase"]
+    TV["Edge: auth0-token-vault<br/>connect · reauth · callback"]
+    ENF["Edge: agent-action · mcp-server<br/>mission-approve · step-up-*"]
+    DB[("PostgreSQL + RLS")]
+    VAULT[("Encrypted OAuth material<br/>(server only)")]
+  end
+
+  subgraph APIs["Provider APIs"]
+    GH["GitHub"]
+    G["Google · Gmail · Calendar"]
+    SL["Slack"]
+  end
+
+  SPA -->|"1 · Sign-in redirect"| UL
+  UL -->|"2 · Session + tokens"| SPA
+  SPA -->|"3 · Bearer access JWT<br/>(API audience)"| DB
+  SPA -->|"4 · Connect / step-up reauth"| TV
+  TV -->|"5 · /authorize + connection"| OAuth
+  OAuth -->|"6 · Authorization code → callback"| TV
+  TV -->|"7 · Token exchange"| OAuth
+  TV -->|"8 · Encrypt & store"| VAULT
+
+  Tool -->|"9 · Same user JWT + mission id"| ENF
+  ENF -->|"10 · Verify JWT<br/>(issuer · audience · sub)"| JWKS
+  ENF -->|"11 · Read missions · policies"| DB
+  ENF -->|"12 · Decrypt for execution"| VAULT
+  ENF -->|"13 · Call APIs on behalf of user"| GH
+  ENF --> G
+  ENF --> SL
+```
+
+**How this maps to judging language**
+
+| Flow | Auth0 role |
+|------|------------|
+| 1–3 | **User control** — who is signed in; JWT `sub` ties data in Supabase to that human. |
+| 4–8 | **Token Vault pattern** — OAuth to GitHub / Google / Slack goes through Auth0; secrets land encrypted in Tether’s backend, not in the agent. |
+| 9–13 | **Security model** — every tool call is authenticated with the same Auth0 JWT, then **scoped** by mission + policy before provider APIs run. |
 
 ---
 

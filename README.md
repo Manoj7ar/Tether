@@ -44,7 +44,7 @@ This project is designed for hackathons such as **[Authorized to Act](https://au
 - [API reference](#api-reference)
 - [Database schema](#database-schema)
 - [Edge functions](#edge-functions)
-- [Scripts and testing](#scripts-and-testing)
+- [Scripts](#scripts)
 - [Production deployment](#production-deployment)
 - [Project structure](#project-structure)
 - [License](#license)
@@ -454,7 +454,7 @@ RLS is enabled on user-owned tables; Edge Functions use the **service role** onl
 
 ---
 
-## Scripts and testing
+## Scripts
 
 | Command | Description |
 |---------|-------------|
@@ -462,7 +462,6 @@ RLS is enabled on user-owned tables; Edge Functions use the **service role** onl
 | `npm run build` | Production build |
 | `npm run preview` | Preview production build |
 | `npm run lint` | ESLint |
-| `npm run test` | Vitest unit tests |
 
 ---
 
@@ -489,7 +488,6 @@ src/
 │   ├── agent/          # MCP test console
 │   └── ui/             # shadcn primitives actually used (unused kit files removed)
 ├── hooks/
-├── contexts/
 ├── integrations/       # Supabase client and generated types
 ├── lib/
 └── assets/             # Images referenced by the app (unused files removed)
@@ -506,7 +504,7 @@ shared/
 
 ## Contributing
 
-Issues and pull requests are welcome. Please keep changes focused and consistent with existing patterns. Run `npm run lint` and `npm run test` before submitting.
+Issues and pull requests are welcome. Please keep changes focused and consistent with existing patterns. Run `npm run lint` before submitting.
 
 ---
 

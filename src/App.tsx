@@ -6,7 +6,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
 import { useMissionNotifications } from "@/hooks/useNotifications";
-import { DemoModeProvider } from "@/contexts/DemoModeContext";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 import StepUpOAuthReturn from "@/components/security/StepUpOAuthReturn";
@@ -51,13 +50,12 @@ const App = () => (
     <BrowserRouter>
       <AuthProvider>
         <StepUpOAuthReturn />
-        <DemoModeProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <NotificationListener />
-            <Suspense fallback={<RouteFallback />}>
-              <Routes>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <NotificationListener />
+          <Suspense fallback={<RouteFallback />}>
+            <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/auth" element={<Auth />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
@@ -73,10 +71,9 @@ const App = () => (
                 <Route path="/settings" element={<ProtectedPage><Settings /></ProtectedPage>} />
 
                 <Route path="*" element={<NotFound />} />
-              </Routes>
-            </Suspense>
-          </TooltipProvider>
-        </DemoModeProvider>
+            </Routes>
+          </Suspense>
+        </TooltipProvider>
       </AuthProvider>
     </BrowserRouter>
   </QueryClientProvider>

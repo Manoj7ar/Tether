@@ -492,7 +492,7 @@ src/
 │   ├── dashboard/      # Analytics, trust, nudges, ambient budget
 │   ├── security/       # Step-up OAuth return + verification panel
 │   ├── agent/          # MCP test console
-│   └── ui/               # shadcn primitives
+│   └── ui/             # shadcn primitives actually used (unused kit files removed)
 ├── hooks/
 ├── contexts/
 ├── integrations/       # Supabase client and generated types

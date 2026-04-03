@@ -7,7 +7,7 @@ import {
 import {
   createContext,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useMemo,
   type ReactNode,
 } from "react";
@@ -82,16 +82,17 @@ function AuthBridge({
   } = useAuth0();
   const user = useMemo(() => mapAuth0User(auth0User), [auth0User]);
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setSupabaseAccessTokenGetter(null);
-      return;
-    }
+  // Register during render so child effects / React Query never run before the getter exists;
+  // otherwise Supabase falls back to the anon key and Edge (Auth0 JWT) returns errors.
+  if (isAuthenticated) {
+    setSupabaseAccessTokenGetter(async () => getAccessTokenSilently());
+  } else {
+    setSupabaseAccessTokenGetter(null);
+  }
 
-    setSupabaseAccessTokenGetter(async () => {
-      return getAccessTokenSilently();
-    });
-  }, [getAccessTokenSilently, isAuthenticated]);
+  useLayoutEffect(() => {
+    return () => setSupabaseAccessTokenGetter(null);
+  }, []);
 
   const value = useMemo<AuthContextType>(() => ({
     getAccessToken: async () => getAccessTokenSilently(),

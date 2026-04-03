@@ -46,15 +46,22 @@ export async function requireAuth0User(req: Request): Promise<{
 
   const domain = getAuth0Domain();
   const token = authHeader.slice("Bearer ".length);
-  const audience = Deno.env.get("AUTH0_AUDIENCE") || undefined;
+  const audience = Deno.env.get("AUTH0_AUDIENCE")?.trim() || undefined;
   const issuer = `https://${domain}/`;
+  const jwks = getJwks(domain);
 
   let payload: JWTPayload;
   try {
-    ({ payload } = await jwtVerify(token, getJwks(domain), {
-      ...(audience ? { audience } : {}),
-      issuer,
-    }));
+    if (audience) {
+      try {
+        ({ payload } = await jwtVerify(token, jwks, { audience, issuer }));
+      } catch {
+        // SPA may omit API audience while Edge has AUTH0_AUDIENCE set; issuer-only is still Auth0.
+        ({ payload } = await jwtVerify(token, jwks, { issuer }));
+      }
+    } else {
+      ({ payload } = await jwtVerify(token, jwks, { issuer }));
+    }
   } catch {
     throw new AuthError("Invalid or expired session", 401);
   }

@@ -7,7 +7,7 @@
 
 ## Supabase Edge Function secrets
 - Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
-- Set `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, and `AUTH0_AUDIENCE`.
+- Set `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `AUTH0_CLIENT_SECRET`. `AUTH0_AUDIENCE` is optional: if set, tokens with that audience are verified first; OIDC-only tokens (no API audience) still verify when issuer matches your tenant.
 - Set `AI_COMPAT_API_URL` and `AI_COMPAT_API_KEY` for generate-manifest / policy / nudges. Optionally set `AI_COMPAT_MODEL` to a model your provider accepts (default is `gpt-4o-mini`).
 
 ## Auth0 configuration

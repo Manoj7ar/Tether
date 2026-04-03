@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { getAiApiKey, getAiChatCompletionsUrl } from "../_shared/ai-gateway.ts";
+import { getAiApiKey, getAiChatCompletionsUrl, getAiCompatModel } from "../_shared/ai-gateway.ts";
 import { AuthError, requireAuth0User } from "../_shared/auth.ts";
 import { requireEnv } from "../_shared/env.ts";
 
@@ -84,7 +84,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: getAiCompatModel(),
         messages: [
           {
             role: "system",

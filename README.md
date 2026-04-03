@@ -312,6 +312,7 @@ Configure in the Supabase dashboard (Settings → Edge Functions) or CLI:
 | `AUTH0_AUDIENCE` | Optional JWT audience validation |
 | `AI_COMPAT_API_URL` | Full URL to `POST .../v1/chat/completions` (OpenAI-compatible) |
 | `AI_COMPAT_API_KEY` | Bearer token for that API |
+| `AI_COMPAT_MODEL` | Optional. Chat model id for that API (defaults to `gpt-4o-mini`; use your provider’s id, e.g. OpenRouter `google/gemini-2.0-flash-001`) |
 
 See also [`docs/production-checklist.md`](docs/production-checklist.md) for deployment verification steps.
 

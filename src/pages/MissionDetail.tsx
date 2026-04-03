@@ -14,6 +14,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Play, FileText, CheckCircle, XCircle, AlertTriangle as TriangleAlert } from "lucide-react";
 import { getErrorMessage } from "@/lib/error-utils";
+import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 import StepUpVerificationPanel from "@/components/security/StepUpVerificationPanel";
 import { useMissionStepUpGate } from "@/hooks/useStepUp";
 
@@ -126,7 +127,7 @@ export default function MissionDetail() {
         body: { mission_id: mission.id, action, params },
       });
       if (error) {
-        toast({ title: "Blocked", description: error.message, variant: "destructive" });
+        toast({ title: "Blocked", description: await edgeFunctionErrorMessage(error), variant: "destructive" });
       } else if (data?.allowed) {
         toast({ title: "Allowed", description: `${action} — approved by Tether` });
       } else {

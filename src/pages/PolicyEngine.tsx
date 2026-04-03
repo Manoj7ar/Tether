@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { supabase } from "@/integrations/supabase/client";
 import { getErrorMessage } from "@/lib/error-utils";
+import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 
 interface GeneratedPolicyRule {
   action: string;
@@ -265,7 +266,7 @@ export default function PolicyEngine() {
       const { data: result, error } = await supabase.functions.invoke("generate-policy", {
         body: { description: nlInput },
       });
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(await edgeFunctionErrorMessage(error));
       if (result?.error) throw new Error(result.error);
       setNlResult(result as GeneratedPolicyResponse);
     } catch (error: unknown) {

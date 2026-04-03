@@ -15,7 +15,7 @@ function getAuth0Domain() {
   const normalized = rawDomain?.replace(/^https?:\/\//, "").replace(/\/.*$/, "") ?? "";
 
   if (!normalized) {
-    throw new Error("AUTH0_DOMAIN is not configured");
+    throw new AuthError("Server authentication is not configured", 503);
   }
 
   return normalized;
@@ -49,10 +49,15 @@ export async function requireAuth0User(req: Request): Promise<{
   const audience = Deno.env.get("AUTH0_AUDIENCE") || undefined;
   const issuer = `https://${domain}/`;
 
-  const { payload } = await jwtVerify(token, getJwks(domain), {
-    ...(audience ? { audience } : {}),
-    issuer,
-  });
+  let payload: JWTPayload;
+  try {
+    ({ payload } = await jwtVerify(token, getJwks(domain), {
+      ...(audience ? { audience } : {}),
+      issuer,
+    }));
+  } catch {
+    throw new AuthError("Invalid or expired session", 401);
+  }
 
   if (!payload.sub) {
     throw new AuthError("Unauthorized");

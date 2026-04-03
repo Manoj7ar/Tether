@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 import type { Json, Tables } from "@/integrations/supabase/types";
 
 export type Mission = Tables<"missions">;
@@ -199,7 +200,7 @@ export function useUpdateMissionStatus() {
           body: { mission_id: id },
         });
         if (error) {
-          throw new Error(error.message || "Approval failed");
+          throw new Error(await edgeFunctionErrorMessage(error));
         }
         const payload = data as { error?: string; mission?: Mission; blocked?: boolean };
         if (payload?.error || !payload?.mission) {

@@ -1,7 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { NavLink } from "@/components/layout/NavLink";
 import TetherLogo from "@/components/layout/TetherLogo";
-import { useAuth } from "@/hooks/useAuth";
+import { getAccountDisplayLabel, getAccountInitials, useAuth } from "@/hooks/useAuth";
 import {
   Sidebar,
   SidebarContent,
@@ -75,8 +75,8 @@ function AppSidebarContent() {
 function UserSection() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const email = user?.email ?? "user@example.com";
-  const initials = email.slice(0, 2).toUpperCase();
+  const displayLine = getAccountDisplayLabel(user);
+  const initials = getAccountInitials(user);
 
   const handleSignOut = async () => {
     await signOut();
@@ -90,7 +90,9 @@ function UserSection() {
           {initials}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground truncate">{email}</p>
+          <p className="text-sm font-medium text-foreground truncate" title={displayLine}>
+            {displayLine}
+          </p>
           <button onClick={handleSignOut} className="text-xs text-muted-foreground hover:text-foreground">
             Sign out
           </button>

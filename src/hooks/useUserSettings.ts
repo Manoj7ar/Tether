@@ -15,6 +15,19 @@ export interface UserSettings {
   ambient_allowed_actions: string[];
 }
 
+/** Used when the Edge function fails so the Settings UI (including demo mode) still renders. */
+export const DEFAULT_USER_SETTINGS: UserSettings = {
+  id: "",
+  user_id: "",
+  demo_mode: false,
+  mcp_enabled: false,
+  ambient_enabled: false,
+  ambient_budget_max: 50,
+  ambient_budget_used: 0,
+  ambient_budget_window_start: new Date().toISOString(),
+  ambient_allowed_actions: [],
+};
+
 function normalizeSettingsPayload(data: unknown): UserSettings {
   const payload = data as { settings?: UserSettings; error?: string } | null;
   if (payload && typeof payload.error === "string" && payload.error.trim()) {

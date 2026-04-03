@@ -6,7 +6,7 @@ import authSignupBg from "@/assets/auth-signup-nature.jpg";
 import TetherLogo from "@/components/layout/TetherLogo";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/hooks/useAuth";
+import { getAccountDisplayLabel, useAuth } from "@/hooks/useAuth";
 import { getErrorMessage } from "@/lib/error-utils";
 
 export default function Auth() {
@@ -79,8 +79,8 @@ export default function Auth() {
             {isLogin ? "Welcome back" : "Create your account"}
           </h1>
           <p className="text-muted-foreground text-sm mb-8">
-            {isAuthenticated && user?.email
-              ? `Signed in as ${user.email}`
+            {isAuthenticated && user
+              ? `Signed in as ${getAccountDisplayLabel(user)}`
               : isLogin
                 ? "Sign in with Auth0 Universal Login to manage your agent's access."
                 : "Create your account with Auth0 Universal Login."}

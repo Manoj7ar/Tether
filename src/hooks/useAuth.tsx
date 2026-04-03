@@ -19,11 +19,46 @@ import {
 } from "@/lib/env";
 
 export interface AuthUser {
+  /** Best-effort email from Auth0 claims (requires `email` scope when the IdP supplies it). */
   email?: string;
   id: string;
   name?: string;
+  nickname?: string;
+  preferredUsername?: string;
   picture?: string;
   sub: string;
+}
+
+/** Single line for UI: real email when present, otherwise name / username / sub (never a fake placeholder). */
+export function getAccountDisplayLabel(user: AuthUser | null | undefined): string {
+  if (!user) return "Signed out";
+  const email = user.email?.trim();
+  if (email) return email;
+  const name = user.name?.trim();
+  if (name) return name;
+  const nick = user.nickname?.trim();
+  if (nick) return nick;
+  const pref = user.preferredUsername?.trim();
+  if (pref) return pref;
+  if (user.sub) return user.sub;
+  return "Signed in";
+}
+
+export function getAccountInitials(user: AuthUser | null | undefined): string {
+  const label = getAccountDisplayLabel(user);
+  if (label === "Signed out" || label === "Signed in") return "?";
+  const at = label.indexOf("@");
+  if (at > 0) {
+    return label.slice(0, 2).toUpperCase();
+  }
+  const parts = label.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase() || "?";
+  }
+  if (label.length >= 2) {
+    return label.slice(0, 2).toUpperCase();
+  }
+  return label.slice(0, 1).toUpperCase() || "?";
 }
 
 interface LoginOptions {
@@ -56,10 +91,24 @@ const AuthContext = createContext<AuthContextType>({
 function mapAuth0User(user: Auth0SdkUser | undefined): AuthUser | null {
   if (!user?.sub) return null;
 
+  const preferredRaw = (user as { preferred_username?: string }).preferred_username;
+  const preferredUsername =
+    typeof preferredRaw === "string" && preferredRaw.trim() ? preferredRaw.trim() : undefined;
+
+  let email = typeof user.email === "string" && user.email.trim() ? user.email.trim() : undefined;
+  if (!email && typeof user.name === "string" && user.name.includes("@")) {
+    email = user.name.trim();
+  }
+  if (!email && preferredUsername?.includes("@")) {
+    email = preferredUsername;
+  }
+
   return {
-    email: user.email,
+    email,
     id: user.sub,
     name: user.name,
+    nickname: typeof user.nickname === "string" ? user.nickname : undefined,
+    preferredUsername,
     picture: user.picture,
     sub: user.sub,
   };

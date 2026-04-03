@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Settings as SettingsIcon, Copy, Check, Zap, Plus, X, Clapperboard } from "lucide-react";
+import { Settings as SettingsIcon, Copy, Check, Zap, Plus, X, Video } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
-import { useUserSettings, useUpdateUserSettings } from "@/hooks/useUserSettings";
+import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { useUserSettings, useUpdateUserSettings, DEFAULT_USER_SETTINGS } from "@/hooks/useUserSettings";
 import { toast } from "@/hooks/use-toast";
 import McpTestPanel from "@/components/agent/McpTestPanel";
 import { getErrorMessage } from "@/lib/error-utils";
@@ -13,16 +15,17 @@ import { missionActionRegistry } from "../../shared/mission-actions";
 
 export default function Settings() {
   const navigate = useNavigate();
-  const { data: settings, isLoading } = useUserSettings();
+  const { data: settings, isLoading, isError, error, refetch, isFetching } = useUserSettings();
   const updateSettings = useUpdateUserSettings();
   const [copied, setCopied] = useState(false);
   const [newAction, setNewAction] = useState("");
 
-  const demoMode = settings?.demo_mode ?? false;
-  const mcpEnabled = settings?.mcp_enabled ?? false;
-  const ambientEnabled = settings?.ambient_enabled ?? false;
-  const ambientBudgetMax = settings?.ambient_budget_max ?? 50;
-  const ambientAllowedActions = settings?.ambient_allowed_actions ?? [];
+  const s = settings ?? DEFAULT_USER_SETTINGS;
+  const demoMode = s.demo_mode;
+  const mcpEnabled = s.mcp_enabled;
+  const ambientEnabled = s.ambient_enabled;
+  const ambientBudgetMax = s.ambient_budget_max;
+  const ambientAllowedActions = s.ambient_allowed_actions;
   const ambientActionSuggestions = missionActionRegistry
     .filter((action) => action.actionType === "read")
     .map((action) => action.id);
@@ -107,30 +110,23 @@ export default function Settings() {
       <h1 className="font-display text-2xl font-bold text-foreground flex items-center gap-3">
         <SettingsIcon className="h-6 w-6" /> Settings
       </h1>
+      <p className="text-sm text-muted-foreground -mt-4">
+        <a href="#demo-mock-mode" className="text-primary underline underline-offset-2 hover:no-underline">
+          Demo / mock mode for recordings
+        </a>
+      </p>
 
-      {/* Demo mode (recordings) */}
-      <div className="card-tether overflow-hidden border-accent/30">
-        <div className="px-6 py-4 border-b border-border">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="font-semibold text-foreground flex items-center gap-2">
-                <Clapperboard className="h-4 w-4 text-accent" /> Demo mode
-              </h2>
-              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                For screen recordings: mission manifest, policy AI, dashboard nudges, and agent/MCP tool execution
-                return fixed scripted content and do not call live provider APIs. Auth0 sign-in and connecting GitHub/Gmail
-                in Connected Accounts stay real. Mission approval, policy blocks, and scope checks behave normally.
-              </p>
-            </div>
-            <Switch checked={demoMode} onCheckedChange={handleToggleDemo} />
-          </div>
-        </div>
-        {demoMode && (
-          <div className="px-6 py-3 bg-accent/5 text-xs text-muted-foreground">
-            A banner appears on every page while demo mode is on. Turn it off when you are done recording.
-          </div>
-        )}
-      </div>
+      {isError && (
+        <Alert variant="destructive">
+          <AlertTitle>Could not load saved settings</AlertTitle>
+          <AlertDescription className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <span>{getErrorMessage(error)}</span>
+            <Button type="button" variant="outline" size="sm" disabled={isFetching} onClick={() => refetch()}>
+              {isFetching ? "Retrying…" : "Retry"}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* MCP Server */}
       <div className="card-tether overflow-hidden">
@@ -255,6 +251,38 @@ export default function Settings() {
           </div>
         )}
       </div>
+
+      {/* Demo / mock mode (recordings) — anchor: #demo-mock-mode */}
+      <section
+        id="demo-mock-mode"
+        className="card-tether overflow-hidden scroll-mt-24 border-2 border-primary/40 ring-2 ring-primary/20 shadow-md"
+        aria-labelledby="demo-mock-mode-heading"
+      >
+        <div className="px-6 py-4 border-b border-border bg-primary/5">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2
+                id="demo-mock-mode-heading"
+                className="font-semibold text-foreground flex items-center gap-2 text-base"
+              >
+                <Video className="h-5 w-5 text-primary shrink-0" aria-hidden />
+                Demo / mock mode
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                For screen recordings: mission manifest, policy AI, dashboard nudges, and agent/MCP tool execution return
+                fixed scripted content and do not call live provider APIs. Auth0 sign-in and connecting GitHub/Gmail in
+                Connected Accounts stay real. Mission approval, policy blocks, and scope checks behave normally.
+              </p>
+            </div>
+            <Switch checked={demoMode} onCheckedChange={handleToggleDemo} aria-label="Toggle demo or mock mode" />
+          </div>
+        </div>
+        {demoMode && (
+          <div className="px-6 py-3 bg-accent/10 text-xs text-muted-foreground border-t border-border">
+            A banner appears on every page while demo mode is on. Turn it off when you are done recording.
+          </div>
+        )}
+      </section>
     </div>
   );
 }

@@ -32,13 +32,17 @@ function normalizeSettingsPayload(data: unknown): UserSettings {
 }
 
 export function useUserSettings() {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
 
   return useQuery({
     queryKey: ["user_settings", user?.id],
     queryFn: async (): Promise<UserSettings | null> => {
       if (!user) return null;
-      const { data, error } = await supabase.functions.invoke("user-settings", { method: "GET" });
+      const token = await getAccessToken();
+      const { data, error } = await supabase.functions.invoke("user-settings", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (error) throw new Error(await edgeFunctionErrorMessage(error));
       return normalizeSettingsPayload(data);
     },
@@ -48,13 +52,15 @@ export function useUserSettings() {
 
 export function useUpdateUserSettings() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
 
   return useMutation({
     mutationFn: async (updates: Partial<Omit<UserSettings, "id" | "user_id">>) => {
       if (!user) throw new Error("Not signed in");
+      const token = await getAccessToken();
       const { data, error } = await supabase.functions.invoke("user-settings", {
         method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
         body: updates,
       });
       if (error) throw new Error(await edgeFunctionErrorMessage(error));

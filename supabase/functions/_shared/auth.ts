@@ -46,7 +46,7 @@ export async function requireAuth0User(req: Request): Promise<{
 
   const domain = getAuth0Domain();
   const token = authHeader.slice("Bearer ".length);
-  const audience = Deno.env.get("AUTH0_AUDIENCE") || undefined;
+  const audience = Deno.env.get("AUTH0_AUDIENCE")?.trim() || undefined;
   const issuer = `https://${domain}/`;
 
   let payload: JWTPayload;
@@ -56,7 +56,16 @@ export async function requireAuth0User(req: Request): Promise<{
       issuer,
     }));
   } catch {
-    throw new AuthError("Invalid or expired session", 401);
+    // SPA may use only openid profile email (no API audience) while Edge has AUTH0_AUDIENCE set.
+    if (audience) {
+      try {
+        ({ payload } = await jwtVerify(token, getJwks(domain), { issuer }));
+      } catch {
+        throw new AuthError("Invalid or expired session", 401);
+      }
+    } else {
+      throw new AuthError("Invalid or expired session", 401);
+    }
   }
 
   if (!payload.sub) {

@@ -1,34 +1,37 @@
+# Auth0-secured functions use verify_jwt=false so the gateway does not reject non-Supabase JWTs.
+# Each function still enforces Auth in code (requireAuth0User). OAuth callback routes have no Bearer token.
+# calculate-trust-score stays verify_jwt=true; agent-action calls it with the service role JWT.
 project_id = "fqxhsbmyrlbzuicvtsby"
 
 [functions.generate-manifest]
-verify_jwt = true
+verify_jwt = false
 
 [functions.auth0-token-vault]
-verify_jwt = true
+verify_jwt = false
 
 [functions.agent-action]
-verify_jwt = true
+verify_jwt = false
 
 [functions.calculate-trust-score]
 verify_jwt = true
 
 [functions.mcp-server]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-policy]
-verify_jwt = true
+verify_jwt = false
 
 [functions.generate-nudges]
-verify_jwt = true
+verify_jwt = false
 
 [functions.step-up-complete]
-verify_jwt = true
+verify_jwt = false
 
 [functions.step-up-status]
-verify_jwt = true
+verify_jwt = false
 
 [functions.mission-approve]
-verify_jwt = true
+verify_jwt = false
 
 [functions.user-settings]
-verify_jwt = true
+verify_jwt = false

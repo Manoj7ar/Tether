@@ -28,9 +28,14 @@ function respond(body: object, status: number) {
 
 async function updateTrustScore(supabaseUrl: string, userId: string) {
   try {
+    const serviceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
     await fetch(`${supabaseUrl}/functions/v1/calculate-trust-score`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${serviceKey}`,
+        apikey: requireEnv("SUPABASE_ANON_KEY"),
+      },
       body: JSON.stringify({ user_id: userId }),
     });
   } catch (error) {

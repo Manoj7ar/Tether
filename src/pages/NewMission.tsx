@@ -8,6 +8,7 @@ import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import MissionTemplates, { MissionTemplate } from "@/components/mission/MissionTemplates";
 import { getErrorMessage } from "@/lib/error-utils";
+import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 
 interface ManifestData {
   tetherNumber: string;
@@ -47,7 +48,7 @@ export default function NewMission() {
         body: { task, timeLimitMins: timeLimit },
       });
 
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(await edgeFunctionErrorMessage(error));
       if (data?.error) throw new Error(data.error);
 
       setManifest(data.manifest as ManifestData);

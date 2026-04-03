@@ -1,14 +1,14 @@
 # Production Checklist
 
 ## Frontend runtime
-- Set `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY`, and `VITE_SUPABASE_PROJECT_ID`.
+- Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` (must be from the **same** Supabase project). `VITE_SUPABASE_PROJECT_ID` is optional and must not point at a different project than the URL/key pair.
 - Set `VITE_AUTH0_DOMAIN`, `VITE_AUTH0_CLIENT_ID`, and `VITE_AUTH0_AUDIENCE`.
 - Set `VITE_AUTH0_DATABASE_CONNECTION` if password reset should stay enabled.
 
 ## Supabase Edge Function secrets
 - Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
 - Set `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, and `AUTH0_AUDIENCE`.
-- Set `AI_COMPAT_API_URL` and `AI_COMPAT_API_KEY` for generate-manifest / policy / nudges.
+- Set `AI_COMPAT_API_URL` and `AI_COMPAT_API_KEY` for generate-manifest / policy / nudges. Optionally set `AI_COMPAT_MODEL` to a model your provider accepts (default is `gpt-4o-mini`).
 
 ## Auth0 configuration
 - Expose an API audience used for browser access tokens.

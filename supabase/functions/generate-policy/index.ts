@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getAiApiKey, getAiChatCompletionsUrl } from "../_shared/ai-gateway.ts";
+import { getAiApiKey, getAiChatCompletionsUrl, getAiCompatModel } from "../_shared/ai-gateway.ts";
 import { AuthError, requireAuth0User } from "../_shared/auth.ts";
 
 const corsHeaders = {
@@ -45,7 +45,7 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: getAiCompatModel(),
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: `Convert this policy to structured rules: "${description}"` },

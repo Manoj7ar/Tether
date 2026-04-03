@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAppConfig } from "@/lib/env";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 
 export interface UserSettings {
   id: string;
@@ -13,23 +14,15 @@ export interface UserSettings {
   ambient_allowed_actions: string[];
 }
 
-function functionsBaseUrl(): string {
-  const { supabaseProjectId, supabaseUrl } = getAppConfig();
-  if (supabaseProjectId) {
-    return `https://${supabaseProjectId}.supabase.co/functions/v1`;
+function normalizeSettingsPayload(data: unknown): UserSettings {
+  const payload = data as { settings?: UserSettings; error?: string } | null;
+  if (payload && typeof payload.error === "string" && payload.error.trim()) {
+    throw new Error(payload.error);
   }
-  return `${supabaseUrl}/functions/v1`;
-}
-
-async function parseSettingsResponse(res: Response): Promise<UserSettings> {
-  const data = await res.json().catch(() => ({})) as { settings?: UserSettings; error?: string };
-  if (!res.ok) {
-    throw new Error(typeof data.error === "string" ? data.error : "Settings request failed");
-  }
-  if (!data.settings) {
+  if (!payload?.settings) {
     throw new Error("Invalid settings response");
   }
-  const s = data.settings;
+  const s = payload.settings;
   return {
     ...s,
     ambient_allowed_actions: Array.isArray(s.ambient_allowed_actions)
@@ -39,21 +32,15 @@ async function parseSettingsResponse(res: Response): Promise<UserSettings> {
 }
 
 export function useUserSettings() {
-  const { user, getAccessToken } = useAuth();
+  const { user } = useAuth();
 
   return useQuery({
     queryKey: ["user_settings", user?.id],
     queryFn: async (): Promise<UserSettings | null> => {
       if (!user) return null;
-      const token = await getAccessToken();
-      const res = await fetch(`${functionsBaseUrl()}/user-settings`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: getAppConfig().supabasePublishableKey,
-        },
-      });
-      return parseSettingsResponse(res);
+      const { data, error } = await supabase.functions.invoke("user-settings", { method: "GET" });
+      if (error) throw new Error(await edgeFunctionErrorMessage(error));
+      return normalizeSettingsPayload(data);
     },
     enabled: !!user,
   });
@@ -61,22 +48,17 @@ export function useUserSettings() {
 
 export function useUpdateUserSettings() {
   const queryClient = useQueryClient();
-  const { user, getAccessToken } = useAuth();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async (updates: Partial<Omit<UserSettings, "id" | "user_id">>) => {
       if (!user) throw new Error("Not signed in");
-      const token = await getAccessToken();
-      const res = await fetch(`${functionsBaseUrl()}/user-settings`, {
+      const { data, error } = await supabase.functions.invoke("user-settings", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          apikey: getAppConfig().supabasePublishableKey,
-        },
-        body: JSON.stringify(updates),
+        body: updates,
       });
-      return parseSettingsResponse(res);
+      if (error) throw new Error(await edgeFunctionErrorMessage(error));
+      return normalizeSettingsPayload(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user_settings"] });

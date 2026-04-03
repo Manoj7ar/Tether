@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getAiApiKey, getAiChatCompletionsUrl } from "../_shared/ai-gateway.ts";
+import { getAiApiKey, getAiChatCompletionsUrl, getAiCompatModel } from "../_shared/ai-gateway.ts";
 import { AuthError, requireAuth0User } from "../_shared/auth.ts";
 
 const corsHeaders = {
@@ -74,6 +74,7 @@ serve(async (req) => {
     }
 
     const aiUrl = getAiChatCompletionsUrl();
+    const aiModel = getAiCompatModel();
     const aiHeaders = {
       Authorization: `Bearer ${getAiApiKey()}`,
       "Content-Type": "application/json",
@@ -84,7 +85,7 @@ serve(async (req) => {
       method: "POST",
       headers: aiHeaders,
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: aiModel,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
           {
@@ -140,8 +141,16 @@ serve(async (req) => {
           { status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
       const text = await response.text();
-      console.error("AI gateway error:", response.status, text);
-      throw new Error(`AI gateway error: ${response.status}`);
+      console.error("AI API error:", response.status, text);
+      let detail = `AI request failed (${response.status}).`;
+      try {
+        const parsed = JSON.parse(text) as { error?: { message?: string }; message?: string };
+        const m = parsed?.error?.message ?? parsed?.message;
+        if (typeof m === "string" && m.trim()) detail = m.trim().slice(0, 400);
+      } catch {
+        if (text.trim()) detail = text.trim().slice(0, 400);
+      }
+      throw new Error(detail);
     }
 
     const data = await response.json();
@@ -171,7 +180,7 @@ serve(async (req) => {
         method: "POST",
         headers: aiHeaders,
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: aiModel,
           messages: [
             { role: "system", content: AUDITOR_PROMPT },
             {
@@ -186,7 +195,7 @@ serve(async (req) => {
         method: "POST",
         headers: aiHeaders,
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: aiModel,
           messages: [
             { role: "system", content: NEGOTIATION_PROMPT },
             {
@@ -308,12 +317,26 @@ serve(async (req) => {
     });
   } catch (e) {
     console.error("generate-manifest error:", e);
-    return new Response(
-      JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }),
-      {
-        status: e instanceof AuthError ? e.status : 500,
+    if (e instanceof AuthError) {
+      return new Response(JSON.stringify({ error: e.message }), {
+        status: e.status,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+      });
+    }
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    if (msg.includes("is not configured")) {
+      const aiHint =
+        msg.includes("AI_COMPAT")
+          ? "Set AI_COMPAT_API_URL and AI_COMPAT_API_KEY in Supabase Edge Function secrets (OpenAI-compatible chat completions endpoint)."
+          : msg;
+      return new Response(JSON.stringify({ error: aiHint }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });

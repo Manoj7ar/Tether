@@ -290,7 +290,7 @@ Open the URL printed by Vite (typically `http://localhost:5173`).
 |----------|----------|---------|
 | `VITE_SUPABASE_URL` | Yes | Supabase project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase anon (publishable) key |
-| `VITE_SUPABASE_PROJECT_ID` | Optional | Used to build default functions URL when present |
+| `VITE_SUPABASE_PROJECT_ID` | Optional | Informational only; Edge Function URLs always derive from `VITE_SUPABASE_URL` |
 | `VITE_AUTH0_DOMAIN` | Yes | Auth0 tenant domain |
 | `VITE_AUTH0_CLIENT_ID` | Yes | Auth0 application client ID |
 | `VITE_AUTH0_AUDIENCE` | Optional | API audience for access tokens |
@@ -312,6 +312,7 @@ Configure in the Supabase dashboard (Settings → Edge Functions) or CLI:
 | `AUTH0_AUDIENCE` | Optional JWT audience validation |
 | `AI_COMPAT_API_URL` | Full URL to `POST .../v1/chat/completions` (OpenAI-compatible) |
 | `AI_COMPAT_API_KEY` | Bearer token for that API |
+| `AI_COMPAT_MODEL` | Optional. Chat model id for that API (defaults to `gpt-4o-mini`; use your provider’s id, e.g. OpenRouter `google/gemini-2.0-flash-001`) |
 
 See also [`docs/production-checklist.md`](docs/production-checklist.md) for deployment verification steps.
 

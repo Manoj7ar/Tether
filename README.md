@@ -290,7 +290,7 @@ Open the URL printed by Vite (typically `http://localhost:5173`).
 |----------|----------|---------|
 | `VITE_SUPABASE_URL` | Yes | Supabase project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Yes | Supabase anon (publishable) key |
-| `VITE_SUPABASE_PROJECT_ID` | Optional | Used to build default functions URL when present |
+| `VITE_SUPABASE_PROJECT_ID` | Optional | Informational only; Edge Function URLs always derive from `VITE_SUPABASE_URL` |
 | `VITE_AUTH0_DOMAIN` | Yes | Auth0 tenant domain |
 | `VITE_AUTH0_CLIENT_ID` | Yes | Auth0 application client ID |
 | `VITE_AUTH0_AUDIENCE` | Optional | API audience for access tokens |

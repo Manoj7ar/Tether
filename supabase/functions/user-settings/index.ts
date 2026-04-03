@@ -86,6 +86,15 @@ serve(async (req) => {
         .single();
 
       if (insErr) {
+        if (insErr.code === "23505") {
+          const { data: raced, error: raceErr } = await supabase
+            .from("user_settings")
+            .select("*")
+            .eq("user_id", userId)
+            .single();
+          if (raceErr) throw raceErr;
+          return json({ settings: normalizeRow(raced as SettingsRow) });
+        }
         throw insErr;
       }
 
@@ -159,6 +168,16 @@ serve(async (req) => {
         .select()
         .single();
       if (insErr) {
+        if (insErr.code === "23505") {
+          const { data: updated, error: upAfterRace } = await supabase
+            .from("user_settings")
+            .update(merged)
+            .eq("user_id", userId)
+            .select()
+            .single();
+          if (upAfterRace) throw upAfterRace;
+          return json({ settings: normalizeRow(updated as SettingsRow) });
+        }
         throw insErr;
       }
       return json({ settings: normalizeRow(inserted as SettingsRow) });

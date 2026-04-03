@@ -1,16 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { getAppConfig } from "@/lib/env";
+import { getAppConfig, getSupabaseFunctionsBaseUrl } from "@/lib/env";
 
 type VaultConnectInput = string | { provider: string; returnPath?: string };
 
 function buildTokenVaultUrl(action: string) {
-  const { supabaseProjectId, supabaseUrl } = getAppConfig();
-  const base = supabaseProjectId
-    ? `https://${supabaseProjectId}.supabase.co/functions/v1/auth0-token-vault`
-    : `${supabaseUrl}/functions/v1/auth0-token-vault`;
-
-  const url = new URL(base);
+  const url = new URL(`${getSupabaseFunctionsBaseUrl()}/auth0-token-vault`);
   url.searchParams.set("action", action);
   return url.toString();
 }

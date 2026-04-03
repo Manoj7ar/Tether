@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { getAppConfig } from "@/lib/env";
+import { getAppConfig, getSupabaseFunctionsBaseUrl } from "@/lib/env";
 import type { MissionPermission } from "@/hooks/useMissions";
 import {
   getCapableActionIdsFromPermissions,
@@ -9,14 +9,6 @@ import {
 } from "../../shared/mission-actions";
 
 export type StepUpProvider = "GitHub" | "Gmail" | "Google Calendar" | "Slack";
-
-function functionsBaseUrl(): string {
-  const { supabaseProjectId, supabaseUrl } = getAppConfig();
-  if (supabaseProjectId) {
-    return `https://${supabaseProjectId}.supabase.co/functions/v1`;
-  }
-  return `${supabaseUrl}/functions/v1`;
-}
 
 export interface StepUpVerification {
   github_verified_at: string | null;
@@ -55,7 +47,7 @@ export function useStepUpStatus(missionId: string | undefined) {
     queryFn: async (): Promise<StepUpVerification | null> => {
       if (!missionId) return null;
       const token = await getAccessToken();
-      const url = new URL(`${functionsBaseUrl()}/step-up-status`);
+      const url = new URL(`${getSupabaseFunctionsBaseUrl()}/step-up-status`);
       url.searchParams.set("mission_id", missionId);
 
       const res = await fetch(url.toString(), {
@@ -116,7 +108,7 @@ export function useCompleteStepUp() {
   return useMutation({
     mutationFn: async (input: { missionId: string; provider: StepUpProvider }) => {
       const token = await getAccessToken();
-      const res = await fetch(`${functionsBaseUrl()}/step-up-complete`, {
+      const res = await fetch(`${getSupabaseFunctionsBaseUrl()}/step-up-complete`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,

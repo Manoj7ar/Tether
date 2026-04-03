@@ -44,3 +44,9 @@ export function getAppConfig(): AppConfig {
 
   return cachedConfig;
 }
+
+/** Edge Functions must use the same project as `VITE_SUPABASE_URL` (avoid mixing with a wrong `VITE_SUPABASE_PROJECT_ID`). */
+export function getSupabaseFunctionsBaseUrl(): string {
+  const base = getAppConfig().supabaseUrl.replace(/\/$/, "");
+  return `${base}/functions/v1`;
+}

@@ -1,6 +1,9 @@
-import { Shield, Plus, RefreshCw, Unlink, Loader2, Github, Mail, Calendar, MessageSquare, Link2 } from "lucide-react";
+import { Shield, RefreshCw, Unlink, Link2 } from "lucide-react";
 import { useConnectedAccounts } from "@/hooks/useMissions";
-import { useConnectProvider, useReauthProvider, useDisconnectAccount } from "@/hooks/useTokenVault";
+import { useReauthProvider, useDisconnectAccount } from "@/hooks/useTokenVault";
+import ConnectProviderButtons, {
+  providerIcons,
+} from "@/components/accounts/ConnectProviderButtons";
 import { useSearchParams } from "react-router-dom";
 import { useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -16,18 +19,8 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
-const providerIcons: Record<string, React.ReactNode> = {
-  GitHub: <Github className="h-4 w-4 text-foreground" />,
-  Gmail: <Mail className="h-4 w-4 text-foreground" />,
-  "Google Calendar": <Calendar className="h-4 w-4 text-foreground" />,
-  Slack: <MessageSquare className="h-4 w-4 text-foreground" />,
-};
-
-const availableProviders = ["GitHub", "Gmail", "Google Calendar", "Slack"];
-
 export default function ConnectedAccounts() {
   const { data: accounts = [], isLoading } = useConnectedAccounts();
-  const connectProvider = useConnectProvider();
   const reauthProvider = useReauthProvider();
   const disconnectAccount = useDisconnectAccount();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -42,9 +35,6 @@ export default function ConnectedAccounts() {
     }
   }, [searchParams, setSearchParams, toast]);
 
-  const connectedProviders = new Set(accounts.map((a) => a.provider));
-  const unconnectedProviders = availableProviders.filter((p) => !connectedProviders.has(p));
-
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
       <h1 className="font-display text-2xl font-bold text-foreground">Connected Accounts</h1>
@@ -57,30 +47,7 @@ export default function ConnectedAccounts() {
         </p>
       </div>
 
-      {/* Connect New Provider */}
-      {unconnectedProviders.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">Connect a new account</p>
-          <div className="flex gap-2 flex-wrap">
-            {unconnectedProviders.map((provider) => (
-              <button
-                key={provider}
-                onClick={() => connectProvider.mutate(provider)}
-                disabled={connectProvider.isPending}
-                className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border bg-card text-sm font-medium text-foreground hover:bg-accent hover:scale-[1.02] hover:shadow-sm active:scale-[0.98] transition-all duration-200 disabled:opacity-50"
-              >
-                <span>{providerIcons[provider] || <Link2 className="h-4 w-4 text-foreground" />}</span>
-                <span>{provider}</span>
-                {connectProvider.isPending ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Plus className="h-3.5 w-3.5 text-muted-foreground" />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <ConnectProviderButtons />
 
       {/* Account Cards */}
       <div className="space-y-4">

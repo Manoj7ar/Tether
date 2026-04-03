@@ -1,4 +1,4 @@
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { NavLink } from "@/components/layout/NavLink";
 import TetherLogo from "@/components/layout/TetherLogo";
 import { getAccountDisplayLabel, getAccountInitials, useAuth } from "@/hooks/useAuth";
@@ -18,6 +18,38 @@ import { Home, Plus, List, LinkIcon, Shield, Settings } from "lucide-react";
 import { ReactNode } from "react";
 import NotificationBell from "@/components/layout/NotificationBell";
 import { useUserSettings } from "@/hooks/useUserSettings";
+
+function getInitialsFromDisplayName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "?";
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    const a = parts[0][0] ?? "";
+    const b = parts[1][0] ?? "";
+    const out = `${a}${b}`.toUpperCase();
+    return out || "?";
+  }
+  if (trimmed.length >= 2) return trimmed.slice(0, 2).toUpperCase();
+  return trimmed.slice(0, 1).toUpperCase() || "?";
+}
+
+function OnboardingGate({ children }: { children: ReactNode }) {
+  const { isPending, isError, data: settings } = useUserSettings();
+
+  if (isPending) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-sm text-muted-foreground">Loading…</div>
+      </div>
+    );
+  }
+
+  if (!isError && settings && !settings.onboarding_completed) {
+    return <Navigate to="/onboarding" replace />;
+  }
+
+  return <>{children}</>;
+}
 
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: Home },
@@ -75,8 +107,12 @@ function AppSidebarContent() {
 function UserSection() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const displayLine = getAccountDisplayLabel(user);
-  const initials = getAccountInitials(user);
+  const { data: settings } = useUserSettings();
+  const displayNamePref = settings?.display_name?.trim();
+  const displayLine = displayNamePref || getAccountDisplayLabel(user);
+  const initials = displayNamePref
+    ? getInitialsFromDisplayName(displayNamePref)
+    : getAccountInitials(user);
 
   const handleSignOut = async () => {
     await signOut();
@@ -119,21 +155,23 @@ function DemoModeBanner() {
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
-      <div className="min-h-screen flex w-full">
-        <AppSidebarContent />
-        <div className="flex-1 flex flex-col min-w-0">
-          <header className="h-12 flex items-center justify-between border-b border-border px-4 bg-card">
-            <SidebarTrigger className="text-muted-foreground" />
-            <div className="flex items-center gap-3">
-              <NotificationBell />
-            </div>
-          </header>
-          <DemoModeBanner />
-          <main className="flex-1 overflow-auto bg-background">
-            {children}
-          </main>
+      <OnboardingGate>
+        <div className="min-h-screen flex w-full">
+          <AppSidebarContent />
+          <div className="flex-1 flex flex-col min-w-0">
+            <header className="h-12 flex items-center justify-between border-b border-border px-4 bg-card">
+              <SidebarTrigger className="text-muted-foreground" />
+              <div className="flex items-center gap-3">
+                <NotificationBell />
+              </div>
+            </header>
+            <DemoModeBanner />
+            <main className="flex-1 overflow-auto bg-background">
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
+      </OnboardingGate>
     </SidebarProvider>
   );
 }

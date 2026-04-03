@@ -24,6 +24,7 @@ const PolicyEngine = lazy(() => import("./pages/PolicyEngine"));
 const MobileApproval = lazy(() => import("./pages/MobileApproval"));
 const Install = lazy(() => import("./pages/Install"));
 const Settings = lazy(() => import("./pages/Settings"));
+const Onboarding = lazy(() => import("./pages/Onboarding"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
 const queryClient = new QueryClient();
@@ -60,6 +61,7 @@ const App = () => (
             <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/auth" element={<Auth />} />
+                <Route path="/onboarding" element={<ProtectedRoute><Onboarding /></ProtectedRoute>} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/approve" element={<MobileApproval />} />
                 <Route path="/install" element={<Install />} />

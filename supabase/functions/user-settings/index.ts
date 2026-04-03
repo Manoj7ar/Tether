@@ -27,16 +27,42 @@ type SettingsRow = {
   ambient_budget_window_start: string | null;
   ambient_allowed_actions: unknown;
   updated_at: string;
+  display_name: string | null;
+  onboarding_completed: boolean;
 };
 
 function normalizeRow(row: SettingsRow) {
   return {
     ...row,
     demo_mode: Boolean(row.demo_mode),
+    onboarding_completed: Boolean(row.onboarding_completed),
     ambient_allowed_actions: Array.isArray(row.ambient_allowed_actions)
       ? (row.ambient_allowed_actions as string[])
       : [],
   };
+}
+
+function mergeDisplayName(
+  patch: { display_name?: string | null },
+  base: SettingsRow | null,
+): string | null {
+  if (patch.display_name !== undefined) {
+    if (typeof patch.display_name !== "string") return null;
+    const t = patch.display_name.trim();
+    return t.length > 0 ? t : null;
+  }
+  return base?.display_name ?? null;
+}
+
+function mergeOnboardingCompleted(
+  patch: { onboarding_completed?: boolean },
+  base: SettingsRow | null,
+): boolean {
+  if (typeof patch.onboarding_completed === "boolean") {
+    return patch.onboarding_completed;
+  }
+  if (base != null) return Boolean(base.onboarding_completed);
+  return false;
 }
 
 serve(async (req) => {
@@ -68,7 +94,9 @@ serve(async (req) => {
       }
 
       if (existing) {
-        return json({ settings: normalizeRow(existing as SettingsRow) });
+        return json({
+          settings: normalizeRow(existing as SettingsRow),
+        });
       }
 
       const now = new Date().toISOString();
@@ -84,6 +112,8 @@ serve(async (req) => {
           ambient_budget_window_start: now,
           ambient_allowed_actions: [],
           updated_at: now,
+          display_name: null,
+          onboarding_completed: false,
         })
         .select()
         .single();
@@ -113,6 +143,8 @@ serve(async (req) => {
         ambient_budget_used?: number;
         ambient_budget_window_start?: string;
         ambient_allowed_actions?: string[];
+        display_name?: string | null;
+        onboarding_completed?: boolean;
       };
 
       const { data: existing, error: selErr } = await supabase
@@ -153,6 +185,8 @@ serve(async (req) => {
           : (Array.isArray(base?.ambient_allowed_actions)
             ? base!.ambient_allowed_actions
             : []),
+        display_name: mergeDisplayName(patch, base),
+        onboarding_completed: mergeOnboardingCompleted(patch, base),
         updated_at: now,
       };
 

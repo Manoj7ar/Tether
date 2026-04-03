@@ -13,6 +13,8 @@ export interface UserSettings {
   ambient_budget_used: number;
   ambient_budget_window_start: string;
   ambient_allowed_actions: string[];
+  display_name: string | null;
+  onboarding_completed: boolean;
 }
 
 /** Used when the Edge function fails so the Settings UI (including demo mode) still renders. */
@@ -26,6 +28,8 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   ambient_budget_used: 0,
   ambient_budget_window_start: new Date().toISOString(),
   ambient_allowed_actions: [],
+  display_name: null,
+  onboarding_completed: true,
 };
 
 function normalizeSettingsPayload(data: unknown): UserSettings {
@@ -37,9 +41,16 @@ function normalizeSettingsPayload(data: unknown): UserSettings {
     throw new Error("Invalid settings response");
   }
   const s = payload.settings;
+  const displayNameRaw = s.display_name;
   return {
     ...s,
     demo_mode: Boolean(s.demo_mode),
+    onboarding_completed:
+      typeof s.onboarding_completed === "boolean" ? s.onboarding_completed : true,
+    display_name:
+      typeof displayNameRaw === "string"
+        ? displayNameRaw.trim() || null
+        : null,
     ambient_allowed_actions: Array.isArray(s.ambient_allowed_actions)
       ? s.ambient_allowed_actions
       : [],
@@ -81,7 +92,10 @@ export function useUpdateUserSettings() {
       if (error) throw new Error(await edgeFunctionErrorMessage(error));
       return normalizeSettingsPayload(data);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      if (user?.id) {
+        queryClient.setQueryData(["user_settings", user.id], data);
+      }
       queryClient.invalidateQueries({ queryKey: ["user_settings"] });
     },
   });

@@ -9,6 +9,7 @@ import { useMissionNotifications } from "@/hooks/useNotifications";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 import StepUpOAuthReturn from "@/components/security/StepUpOAuthReturn";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { Analytics } from "@vercel/analytics/react";
 
 const Landing = lazy(() => import("./pages/Landing"));
@@ -77,6 +78,7 @@ const App = () => (
         </TooltipProvider>
       </AuthProvider>
     </BrowserRouter>
+    <SpeedInsights />
     <Analytics />
   </QueryClientProvider>
 );

@@ -7,6 +7,7 @@ import {
 import {
   createContext,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   type ReactNode,
@@ -130,6 +131,28 @@ function AuthBridge({
     user: auth0User,
   } = useAuth0();
   const user = useMemo(() => mapAuth0User(auth0User), [auth0User]);
+
+  // #region agent log
+  useEffect(() => {
+    fetch("http://127.0.0.1:7331/ingest/73856759-8783-4062-ac2d-fb1e9443f226", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "fa3011" },
+      body: JSON.stringify({
+        sessionId: "fa3011",
+        location: "useAuth.tsx:AuthBridge",
+        message: "auth0_bridge_state",
+        data: {
+          auth0IsLoading: isLoading,
+          isAuthenticated,
+          hasAuth0User: !!auth0User?.sub,
+          mappedUserIdPresent: !!user?.id,
+        },
+        timestamp: Date.now(),
+        hypothesisId: "H1",
+      }),
+    }).catch(() => {});
+  }, [isLoading, isAuthenticated, auth0User?.sub, user?.id]);
+  // #endregion
 
   // Register during render so child effects / React Query never run before the getter exists;
   // otherwise Supabase falls back to the anon key and Edge (Auth0 JWT) returns errors.

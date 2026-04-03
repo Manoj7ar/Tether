@@ -90,7 +90,12 @@ serve(async (req) => {
           { role: "system", content: SYSTEM_PROMPT },
           {
             role: "user",
-            content: `Task: "${task}"\nTime limit: ${timeLimitMins} minutes\n\nGenerate the authorization manifest for this mission.`,
+            content: [
+              `Task: "${task}"`,
+              `Time limit: ${timeLimitMins} minutes`,
+              "",
+              "Generate the authorization manifest for this mission.",
+            ].join("\n"),
           },
         ],
         tools: [
@@ -185,7 +190,14 @@ serve(async (req) => {
             { role: "system", content: AUDITOR_PROMPT },
             {
               role: "user",
-              content: `Task description: "${task}"\n\nProposed manifest:\n${JSON.stringify(manifest, null, 2)}\n\nVerify whether these permissions are justified. Return ONLY valid JSON.`,
+              content: [
+                `Task description: "${task}"`,
+                "",
+                "Proposed manifest:",
+                JSON.stringify(manifest, null, 2),
+                "",
+                "Verify whether these permissions are justified. Return ONLY valid JSON.",
+              ].join("\n"),
             },
           ],
         }),
@@ -200,7 +212,14 @@ serve(async (req) => {
             { role: "system", content: NEGOTIATION_PROMPT },
             {
               role: "user",
-              content: `Task: "${task}"\n\nManifest permissions:\n${JSON.stringify(manifest.permissions, null, 2)}\n\nIdentify any over-scoped permissions and suggest downgrades.`,
+              content: [
+                `Task: "${task}"`,
+                "",
+                "Manifest permissions:",
+                JSON.stringify(manifest.permissions, null, 2),
+                "",
+                "Identify any over-scoped permissions and suggest downgrades.",
+              ].join("\n"),
             },
           ],
           tools: [

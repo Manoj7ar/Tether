@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Play, ChevronDown, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { getErrorMessage } from "@/lib/error-utils";
+import { getAppConfig } from "@/lib/env";
 
 type McpMethod = "initialize" | "tools/list" | "tools/call";
 type JsonRpcRequest = {
@@ -48,7 +49,7 @@ export default function McpTestPanel({ endpoint }: { endpoint: string }) {
           "Content-Type": "application/json",
           Accept: "application/json",
           Authorization: `Bearer ${token}`,
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          apikey: getAppConfig().supabasePublishableKey,
         },
         body: JSON.stringify(body),
       });

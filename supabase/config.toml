@@ -1,34 +1,34 @@
 project_id = "fqxhsbmyrlbzuicvtsby"
 
 [functions.generate-manifest]
-verify_jwt = false
+verify_jwt = true
 
 [functions.auth0-token-vault]
-verify_jwt = false
+verify_jwt = true
 
 [functions.agent-action]
-verify_jwt = false
+verify_jwt = true
 
 [functions.calculate-trust-score]
-verify_jwt = false
+verify_jwt = true
 
 [functions.mcp-server]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-policy]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-nudges]
-verify_jwt = false
+verify_jwt = true
 
 [functions.step-up-complete]
-verify_jwt = false
+verify_jwt = true
 
 [functions.step-up-status]
-verify_jwt = false
+verify_jwt = true
 
 [functions.mission-approve]
-verify_jwt = false
+verify_jwt = true
 
 [functions.user-settings]
-verify_jwt = false
+verify_jwt = true

@@ -9,8 +9,8 @@ import {
   validateActionParams,
 } from "../../../shared/mission-actions.ts";
 import { AuthError, requireAuth0User } from "../_shared/auth.ts";
-import { decryptSecret } from "../_shared/crypto.ts";
 import { requireEnv } from "../_shared/env.ts";
+import { ensureFreshProviderAccessToken } from "../_shared/oauth-token.ts";
 import { executeProviderAction } from "../_shared/provider-execution.ts";
 
 const corsHeaders = {
@@ -212,12 +212,47 @@ async function executeAuthorizedAction(
 
   const { data: providerSecrets } = await supabase
     .from("connected_account_secrets")
-    .select("access_token_encrypted")
+    .select("access_token_encrypted, refresh_token_encrypted, token_expires_at")
     .eq("account_id", providerAccount.id)
     .maybeSingle();
 
-  const accessToken = await decryptSecret(providerSecrets?.access_token_encrypted);
-  if (!accessToken) {
+  if (!providerSecrets) {
+    return {
+      ok: false as const,
+      response: {
+        error: `${definition.provider} access token is unavailable`,
+        blocked: true,
+      },
+      status: 500,
+      log: {
+        latency_ms: 0,
+        status: "blocked" as const,
+        block_reason: `${definition.provider} access token is unavailable`,
+        block_type: null,
+      },
+    };
+  }
+
+  let accessToken: string;
+  try {
+    const fresh = await ensureFreshProviderAccessToken({
+      access_token_encrypted: providerSecrets.access_token_encrypted,
+      refresh_token_encrypted: providerSecrets.refresh_token_encrypted,
+      token_expires_at: providerSecrets.token_expires_at,
+    });
+    accessToken = fresh.accessToken;
+    if (fresh.persisted) {
+      const updatePayload: Record<string, unknown> = {
+        access_token_encrypted: fresh.persisted.access_token_encrypted,
+        token_expires_at: fresh.persisted.token_expires_at,
+        updated_at: new Date().toISOString(),
+      };
+      if (fresh.persisted.refresh_token_encrypted !== undefined) {
+        updatePayload.refresh_token_encrypted = fresh.persisted.refresh_token_encrypted;
+      }
+      await supabase.from("connected_account_secrets").update(updatePayload).eq("account_id", providerAccount.id);
+    }
+  } catch {
     return {
       ok: false as const,
       response: {

@@ -13,6 +13,7 @@ import AmbientBudgetCard from "@/components/dashboard/AmbientBudgetCard";
 import { formatDistanceToNow, format } from "date-fns";
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { getEdgeFunctionUrl } from "@/lib/env";
 
 const statusStyles: Record<string, string> = {
   pending: "bg-accent text-accent-foreground animate-pulse-status",
@@ -184,7 +185,7 @@ export default function Dashboard() {
         <div>
           <h3 className="font-medium text-foreground text-sm mb-3">Agent Endpoint</h3>
           <div className="code-surface p-3 text-xs break-all">
-            POST {import.meta.env.VITE_SUPABASE_URL}/functions/v1/agent-action
+            POST {getEdgeFunctionUrl("agent-action")}
           </div>
           <p className="text-xs text-muted-foreground mt-2">
             Point your agent at this endpoint. It submits action requests; Tether enforces scope, policy, and expiry.

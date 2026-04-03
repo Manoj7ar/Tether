@@ -7,6 +7,7 @@ import { useUserSettings, useUpdateUserSettings } from "@/hooks/useUserSettings"
 import { toast } from "@/hooks/use-toast";
 import McpTestPanel from "@/components/agent/McpTestPanel";
 import { getErrorMessage } from "@/lib/error-utils";
+import { getEdgeFunctionUrl } from "@/lib/env";
 import { missionActionRegistry } from "../../shared/mission-actions";
 
 export default function Settings() {
@@ -23,7 +24,7 @@ export default function Settings() {
     .filter((action) => action.actionType === "read")
     .map((action) => action.id);
 
-  const mcpEndpoint = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mcp-server`;
+  const mcpEndpoint = getEdgeFunctionUrl("mcp-server");
 
   const handleToggleMcp = async (enabled: boolean) => {
     try {

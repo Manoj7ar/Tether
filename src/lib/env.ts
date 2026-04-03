@@ -50,3 +50,9 @@ export function getSupabaseFunctionsBaseUrl(): string {
   const base = getAppConfig().supabaseUrl.replace(/\/$/, "");
   return `${base}/functions/v1`;
 }
+
+/** Full URL for a deployed Edge Function, e.g. `getEdgeFunctionUrl("mcp-server")`. */
+export function getEdgeFunctionUrl(functionName: string): string {
+  const slug = functionName.replace(/^\/+|\/+$/g, "");
+  return `${getSupabaseFunctionsBaseUrl()}/${slug}`;
+}

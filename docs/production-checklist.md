@@ -9,6 +9,7 @@
 - Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
 - Set `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, and `AUTH0_CLIENT_SECRET`. `AUTH0_AUDIENCE` is optional: if set, tokens with that audience are verified first; OIDC-only tokens (no API audience) still verify when issuer matches your tenant.
 - Set `AI_COMPAT_API_URL` and `AI_COMPAT_API_KEY` for generate-manifest / policy / nudges. Optionally set `AI_COMPAT_MODEL` to a model your provider accepts (default is `gpt-4o-mini`).
+- Optionally set `GMAIL_EXPORT_MAX_MESSAGES` (1–500, default 150) to cap how many message IDs `gmail.download_all` collects per execution.
 
 ## Auth0 configuration
 - Expose an API audience used for browser access tokens.
@@ -19,6 +20,7 @@
 ## Deploy checks
 - Apply migrations (includes `step_up_verifications` for high-risk step-up).
 - Deploy the **`user-settings`** Edge Function (Settings page MCP / Ambient toggles call it with the Auth0 token).
+- Redeploy **`agent-action`** after provider or token changes (includes `github.delete_repo`, `gmail.download_all`, and Auth0 refresh-token rotation when access tokens expire).
 - Verify login, mission creation, approval, connected-account link, MCP test console, and **step-up re-auth** (GitHub / Google) on a mission that includes `github.delete_repo` or `gmail.download_all` permissions. OAuth callback may redirect to a `returnPath` (same origin, path-only) so users land back on the mission or `/approve` after reauth.
 - Verify Edge Functions reject missing or invalid bearer tokens.
 - Confirm Supabase RLS still isolates records by Auth0 subject after migration.

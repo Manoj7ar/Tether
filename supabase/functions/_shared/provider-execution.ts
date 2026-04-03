@@ -178,6 +178,38 @@ export async function executeProviderAction(
       };
     }
 
+    case "github.delete_repo": {
+      const repo = requireString(params, "repo");
+      const ghHeaders = {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+        "User-Agent": "tether-mission-control",
+      };
+      const delRes = await fetch(`https://api.github.com/repos/${repo}`, {
+        method: "DELETE",
+        headers: ghHeaders,
+      });
+      if (!delRes.ok) {
+        const text = await delRes.text();
+        let parsed: unknown = null;
+        if (text) {
+          try {
+            parsed = JSON.parse(text);
+          } catch {
+            parsed = text;
+          }
+        }
+        const message =
+          (parsed && typeof parsed === "object" && "message" in parsed && typeof parsed.message === "string" && parsed.message) ||
+          `GitHub request failed with ${delRes.status}`;
+        throw new Error(message);
+      }
+      return {
+        resultSummary: `Deleted GitHub repository ${repo}`,
+        result: { deleted: true, repo },
+      };
+    }
+
     case "gmail.list_messages": {
       const query = typeof params.query === "string" ? params.query : "";
       const maxResults = typeof params.max_results === "number" ? params.max_results : 10;
@@ -231,6 +263,46 @@ export async function executeProviderAction(
       return {
         resultSummary: `Sent email to ${requireString(params, "to")}`,
         result: redactedPreview(result),
+      };
+    }
+
+    case "gmail.download_all": {
+      const rawMax = Deno.env.get("GMAIL_EXPORT_MAX_MESSAGES")?.trim();
+      const parsedMax = rawMax ? parseInt(rawMax, 10) : NaN;
+      const maxMessages = Number.isFinite(parsedMax)
+        ? Math.min(500, Math.max(1, parsedMax))
+        : 150;
+      const collected: Array<{ id: string; threadId?: string }> = [];
+      let pageToken: string | undefined;
+
+      while (collected.length < maxMessages) {
+        const pageSize = Math.min(50, maxMessages - collected.length);
+        const search = new URLSearchParams({ maxResults: String(pageSize) });
+        if (pageToken) search.set("pageToken", pageToken);
+
+        const page = await providerFetch(
+          `https://gmail.googleapis.com/gmail/v1/users/me/messages?${search.toString()}`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+          "Gmail",
+        ) as { messages?: Array<{ id: string; threadId?: string }>; nextPageToken?: string };
+
+        const batch = page.messages ?? [];
+        for (const m of batch) {
+          if (collected.length >= maxMessages) break;
+          collected.push({ id: m.id, threadId: m.threadId });
+        }
+
+        pageToken = page.nextPageToken;
+        if (!pageToken || batch.length === 0) break;
+      }
+
+      return {
+        resultSummary: `Listed ${collected.length} Gmail message reference(s) (export cap ${maxMessages})`,
+        result: {
+          total: collected.length,
+          cap: maxMessages,
+          preview: redactedPreview(collected),
+        },
       };
     }
 

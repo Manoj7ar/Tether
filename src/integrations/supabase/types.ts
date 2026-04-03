@@ -391,6 +391,7 @@ export type Database = {
           ambient_budget_used: number
           ambient_budget_window_start: string | null
           ambient_enabled: boolean
+          demo_mode: boolean
           id: string
           mcp_enabled: boolean
           updated_at: string
@@ -402,6 +403,7 @@ export type Database = {
           ambient_budget_used?: number
           ambient_budget_window_start?: string | null
           ambient_enabled?: boolean
+          demo_mode?: boolean
           id?: string
           mcp_enabled?: boolean
           updated_at?: string
@@ -413,6 +415,7 @@ export type Database = {
           ambient_budget_used?: number
           ambient_budget_window_start?: string | null
           ambient_enabled?: boolean
+          demo_mode?: boolean
           id?: string
           mcp_enabled?: boolean
           updated_at?: string

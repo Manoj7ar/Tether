@@ -19,6 +19,7 @@ function json(body: object, status = 200) {
 type SettingsRow = {
   id: string;
   user_id: string;
+  demo_mode: boolean;
   mcp_enabled: boolean;
   ambient_enabled: boolean;
   ambient_budget_max: number;
@@ -31,6 +32,7 @@ type SettingsRow = {
 function normalizeRow(row: SettingsRow) {
   return {
     ...row,
+    demo_mode: Boolean(row.demo_mode),
     ambient_allowed_actions: Array.isArray(row.ambient_allowed_actions)
       ? (row.ambient_allowed_actions as string[])
       : [],
@@ -74,6 +76,7 @@ serve(async (req) => {
         .from("user_settings")
         .insert({
           user_id: userId,
+          demo_mode: false,
           mcp_enabled: false,
           ambient_enabled: false,
           ambient_budget_max: 50,
@@ -103,6 +106,7 @@ serve(async (req) => {
 
     if (req.method === "POST") {
       const patch = await req.json() as {
+        demo_mode?: boolean;
         mcp_enabled?: boolean;
         ambient_enabled?: boolean;
         ambient_budget_max?: number;
@@ -126,6 +130,9 @@ serve(async (req) => {
 
       const merged = {
         user_id: userId,
+        demo_mode: typeof patch.demo_mode === "boolean"
+          ? patch.demo_mode
+          : (base?.demo_mode ?? false),
         mcp_enabled: typeof patch.mcp_enabled === "boolean"
           ? patch.mcp_enabled
           : (base?.mcp_enabled ?? false),

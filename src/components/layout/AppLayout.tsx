@@ -17,6 +17,7 @@ import {
 import { Home, Plus, List, LinkIcon, Shield, Settings } from "lucide-react";
 import { ReactNode } from "react";
 import NotificationBell from "@/components/layout/NotificationBell";
+import { useUserSettings } from "@/hooks/useUserSettings";
 
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: Home },
@@ -100,6 +101,19 @@ function UserSection() {
 }
 
 
+function DemoModeBanner() {
+  const { data: settings } = useUserSettings();
+  if (!settings?.demo_mode) return null;
+  return (
+    <div
+      role="status"
+      className="shrink-0 border-b border-accent/40 bg-accent/10 px-4 py-2 text-center text-xs font-medium text-foreground"
+    >
+      Demo mode — AI outputs and provider tool calls are simulated. OAuth sign-in and account linking stay real.
+    </div>
+  );
+}
+
 export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <SidebarProvider>
@@ -112,6 +126,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
               <NotificationBell />
             </div>
           </header>
+          <DemoModeBanner />
           <main className="flex-1 overflow-auto bg-background">
             {children}
           </main>

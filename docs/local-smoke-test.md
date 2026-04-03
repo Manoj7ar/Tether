@@ -29,6 +29,11 @@ Mark each row after you run it.
 | 10 | Policy | Rules list; AI generate policy | |
 | 11 | Settings | Toggle MCP / ambient; MCP Test Console: `initialize`, `tools/list`, `tools/call` | |
 | 12 | Settings | Copied MCP URL equals `getEdgeFunctionUrl("mcp-server")` for your project | |
+| 13 | Demo mode | Settings → enable **Demo mode** → redirects to dashboard; banner shows; manifest/nudges/policy AI are instant/scripted; simulate + MCP `tools/call` return mock provider results; turn off when done | |
+
+## Demo mode (recordings)
+
+Toggle under **Settings → Demo mode**. While on: Edge uses [`demo-fixtures`](../supabase/functions/_shared/demo-fixtures.ts) for manifest, policy, nudges; [`agent-action`](../supabase/functions/agent-action/index.ts) skips live provider HTTP after scope checks; [`step-up-status`](../supabase/functions/step-up-status/index.ts) returns synthetic verification. OAuth and mission/policy **blocking** stay real.
 
 ## External agent (optional)
 

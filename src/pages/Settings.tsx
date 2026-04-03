@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Settings as SettingsIcon, Copy, Check, Zap, Plus, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Settings as SettingsIcon, Copy, Check, Zap, Plus, X, Clapperboard } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Input } from "@/components/ui/input";
@@ -11,11 +12,13 @@ import { getEdgeFunctionUrl } from "@/lib/env";
 import { missionActionRegistry } from "../../shared/mission-actions";
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { data: settings, isLoading } = useUserSettings();
   const updateSettings = useUpdateUserSettings();
   const [copied, setCopied] = useState(false);
   const [newAction, setNewAction] = useState("");
 
+  const demoMode = settings?.demo_mode ?? false;
   const mcpEnabled = settings?.mcp_enabled ?? false;
   const ambientEnabled = settings?.ambient_enabled ?? false;
   const ambientBudgetMax = settings?.ambient_budget_max ?? 50;
@@ -25,6 +28,23 @@ export default function Settings() {
     .map((action) => action.id);
 
   const mcpEndpoint = getEdgeFunctionUrl("mcp-server");
+
+  const handleToggleDemo = async (enabled: boolean) => {
+    try {
+      await updateSettings.mutateAsync({ demo_mode: enabled });
+      if (enabled) {
+        toast({
+          title: "Demo mode on",
+          description: "Manifest, policy, nudges, and tool runs use scripted data. OAuth connections stay real.",
+        });
+        navigate("/dashboard");
+      } else {
+        toast({ title: "Demo mode off", description: "Restored live AI and provider execution." });
+      }
+    } catch (error: unknown) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+    }
+  };
 
   const handleToggleMcp = async (enabled: boolean) => {
     try {
@@ -87,6 +107,30 @@ export default function Settings() {
       <h1 className="font-display text-2xl font-bold text-foreground flex items-center gap-3">
         <SettingsIcon className="h-6 w-6" /> Settings
       </h1>
+
+      {/* Demo mode (recordings) */}
+      <div className="card-tether overflow-hidden border-accent/30">
+        <div className="px-6 py-4 border-b border-border">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="font-semibold text-foreground flex items-center gap-2">
+                <Clapperboard className="h-4 w-4 text-accent" /> Demo mode
+              </h2>
+              <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+                For screen recordings: mission manifest, policy AI, dashboard nudges, and agent/MCP tool execution
+                return fixed scripted content and do not call live provider APIs. Auth0 sign-in and connecting GitHub/Gmail
+                in Connected Accounts stay real. Mission approval, policy blocks, and scope checks behave normally.
+              </p>
+            </div>
+            <Switch checked={demoMode} onCheckedChange={handleToggleDemo} />
+          </div>
+        </div>
+        {demoMode && (
+          <div className="px-6 py-3 bg-accent/5 text-xs text-muted-foreground">
+            A banner appears on every page while demo mode is on. Turn it off when you are done recording.
+          </div>
+        )}
+      </div>
 
       {/* MCP Server */}
       <div className="card-tether overflow-hidden">

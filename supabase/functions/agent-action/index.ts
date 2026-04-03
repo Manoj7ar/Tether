@@ -9,6 +9,8 @@ import {
   validateActionParams,
 } from "../../../shared/mission-actions.ts";
 import { AuthError, requireAuth0User } from "../_shared/auth.ts";
+import { demoExecutionPayload } from "../_shared/demo-fixtures.ts";
+import { fetchDemoMode } from "../_shared/demo-mode.ts";
 import { requireEnv } from "../_shared/env.ts";
 import { ensureFreshProviderAccessToken } from "../_shared/oauth-token.ts";
 import { executeProviderAction } from "../_shared/provider-execution.ts";
@@ -81,7 +83,12 @@ async function assertStepUpSatisfied(
   userId: string,
   missionId: string,
   definition: NonNullable<ReturnType<typeof getMissionAction>>,
+  demoMode: boolean,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
+  if (demoMode) {
+    return { ok: true };
+  }
+
   if (!actionRequiresStepUp(definition.id)) {
     return { ok: true };
   }
@@ -123,13 +130,14 @@ async function executeAuthorizedAction(
   actionId: string,
   params: Record<string, unknown>,
   permissionRows: Array<{ provider: string; scope: string }>,
+  demoMode: boolean,
 ) {
   const definition = getMissionAction(actionId);
   if (!definition) {
     throw new Error(`Unknown action: ${actionId}`);
   }
 
-  const stepUp = await assertStepUpSatisfied(supabase, userId, missionId, definition);
+  const stepUp = await assertStepUpSatisfied(supabase, userId, missionId, definition, demoMode);
   if (!stepUp.ok) {
     return {
       ok: false as const,
@@ -185,6 +193,28 @@ async function executeAuthorizedAction(
         status: "blocked" as const,
         block_reason: "Action not in approved mission scope",
         block_type: "scope_violation",
+      },
+    };
+  }
+
+  if (demoMode) {
+    const startedAt = Date.now();
+    const { result, summary } = demoExecutionPayload(definition.id);
+    const latencyMs = Math.max(1, Date.now() - startedAt);
+    return {
+      ok: true as const,
+      response: {
+        allowed: true,
+        action: definition.id,
+        result,
+        summary,
+      },
+      status: 200,
+      log: {
+        latency_ms: latencyMs,
+        status: "allowed" as const,
+        result_json: result,
+        result_summary: summary,
       },
     };
   }
@@ -331,6 +361,7 @@ serve(async (req) => {
       requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
     );
     const supabaseUrl = requireEnv("SUPABASE_URL");
+    const demoMode = await fetchDemoMode(supabase, userId);
 
     const body = await req.json() as {
       mission_id?: string;
@@ -460,6 +491,7 @@ serve(async (req) => {
         action,
         params,
         definition.requiredScopes.map((scope) => ({ provider: definition.provider, scope })),
+        demoMode,
       );
 
       await insertExecutionLog(supabase, {
@@ -621,6 +653,7 @@ serve(async (req) => {
       action,
       params,
       permissionRows ?? [],
+      demoMode,
     );
 
     await insertExecutionLog(supabase, {

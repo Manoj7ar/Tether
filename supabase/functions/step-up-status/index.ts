@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { AuthError, requireAuth0User } from "../_shared/auth.ts";
+import { fetchDemoMode } from "../_shared/demo-mode.ts";
 import { requireEnv } from "../_shared/env.ts";
 
 const corsHeaders = {
@@ -43,6 +44,18 @@ serve(async (req) => {
 
     if (missionError || !mission) {
       return jsonResponse({ error: "Mission not found" }, 404);
+    }
+
+    if (await fetchDemoMode(supabase, userId)) {
+      const nowIso = new Date().toISOString();
+      const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      return jsonResponse({
+        verification: {
+          github_verified_at: nowIso,
+          google_verified_at: nowIso,
+          expires_at: expires,
+        },
+      });
     }
 
     const { data: row } = await supabase

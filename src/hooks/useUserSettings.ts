@@ -6,6 +6,7 @@ import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 export interface UserSettings {
   id: string;
   user_id: string;
+  demo_mode: boolean;
   mcp_enabled: boolean;
   ambient_enabled: boolean;
   ambient_budget_max: number;
@@ -25,6 +26,7 @@ function normalizeSettingsPayload(data: unknown): UserSettings {
   const s = payload.settings;
   return {
     ...s,
+    demo_mode: Boolean(s.demo_mode),
     ambient_allowed_actions: Array.isArray(s.ambient_allowed_actions)
       ? s.ambient_allowed_actions
       : [],

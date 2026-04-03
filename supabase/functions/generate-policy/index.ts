@@ -1,6 +1,10 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { getAiApiKey, getAiChatCompletionsUrl, getAiCompatModel } from "../_shared/ai-gateway.ts";
 import { AuthError, requireAuth0User } from "../_shared/auth.ts";
+import { buildDemoPolicyResponse } from "../_shared/demo-fixtures.ts";
+import { fetchDemoMode } from "../_shared/demo-mode.ts";
+import { requireEnv } from "../_shared/env.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -29,11 +33,21 @@ serve(async (req) => {
   }
 
   try {
-    await requireAuth0User(req);
+    const { userId } = await requireAuth0User(req);
     const { description } = await req.json();
     if (!description) {
       return new Response(JSON.stringify({ error: "description required" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      requireEnv("SUPABASE_URL"),
+      requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
+    );
+    if (await fetchDemoMode(supabase, userId)) {
+      return new Response(JSON.stringify(buildDemoPolicyResponse(String(description))), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

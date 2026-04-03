@@ -4,16 +4,13 @@ import { toast } from "sonner";
 import authLoginBg from "@/assets/auth-nature.jpg";
 import authSignupBg from "@/assets/auth-signup-nature.jpg";
 import TetherLogo from "@/components/layout/TetherLogo";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { getAccountDisplayLabel, useAuth } from "@/hooks/useAuth";
 import { getErrorMessage } from "@/lib/error-utils";
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated, login, resetPassword, user } = useAuth();
+  const { isAuthenticated, login, user } = useAuth();
   const location = useLocation();
   const state = location.state as { returnTo?: string } | null;
 
@@ -27,24 +24,6 @@ export default function Auth() {
       });
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, "Authentication failed"));
-      setLoading(false);
-    }
-  };
-
-  const handleForgotPassword = async () => {
-    if (!email.trim()) {
-      toast.error("Enter your email first");
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      await resetPassword(email.trim());
-      toast.success("Password reset email sent. Check your inbox.");
-    } catch (error: unknown) {
-      toast.error(getErrorMessage(error, "Password reset failed"));
-    } finally {
       setLoading(false);
     }
   };
@@ -87,19 +66,6 @@ export default function Auth() {
           </p>
 
           <div className="space-y-4">
-            <div>
-              <Label htmlFor="email" className="text-sm">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                placeholder="you@company.com"
-                className="mt-1.5"
-              />
-            </div>
-
             <button
               type="button"
               onClick={() => handleAuth(isLogin ? undefined : "signup")}
@@ -110,14 +76,9 @@ export default function Auth() {
             </button>
 
             {isLogin && (
-              <button
-                type="button"
-                onClick={handleForgotPassword}
-                disabled={loading}
-                className="w-full text-xs text-primary hover:underline disabled:opacity-50"
-              >
-                Send password reset email
-              </button>
+              <p className="text-xs text-muted-foreground text-center leading-relaxed">
+                Forgot your password? After you continue, use the reset link on the Auth0 sign-in page.
+              </p>
             )}
           </div>
 

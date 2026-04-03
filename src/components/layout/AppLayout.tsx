@@ -34,27 +34,11 @@ function getInitialsFromDisplayName(name: string): string {
 }
 
 function OnboardingGate({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
-  // Use isLoading (pending + fetching), not isPending: when the query is disabled,
-  // isPending stays true with no data but fetchStatus is idle — that would spin forever.
-  const { isLoading, isError, data: settings } = useUserSettings();
+  const { isError, data: settings } = useUserSettings();
 
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-sm text-muted-foreground">Loading…</div>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="text-sm text-muted-foreground">Loading…</div>
-      </div>
-    );
-  }
-
+  // Do not full-screen block on user-settings: if Auth0 token or the Edge function hangs,
+  // isLoading stays true forever and the app is a blank "Loading" page. Render the shell
+  // immediately; redirect to onboarding only once we have a definitive row.
   if (!isError && settings && !settings.onboarding_completed) {
     return <Navigate to="/onboarding" replace />;
   }

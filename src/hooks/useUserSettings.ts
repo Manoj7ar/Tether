@@ -3,6 +3,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 
+/** Auth0 silent token + Edge cold start can stall; never leave queries hanging without a bound. */
+const ACCESS_TOKEN_TIMEOUT_MS = 20_000;
+const USER_SETTINGS_FN_TIMEOUT_MS = 25_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(message)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timeoutId!));
+}
+
 export interface UserSettings {
   id: string;
   user_id: string;
@@ -64,10 +76,15 @@ export function useUserSettings() {
     queryKey: ["user_settings", user?.id],
     queryFn: async (): Promise<UserSettings | null> => {
       if (!user) return null;
-      const token = await getAccessToken();
+      const token = await withTimeout(
+        getAccessToken(),
+        ACCESS_TOKEN_TIMEOUT_MS,
+        "Could not refresh your session in time. Try signing out and back in.",
+      );
       const { data, error } = await supabase.functions.invoke("user-settings", {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
+        timeout: USER_SETTINGS_FN_TIMEOUT_MS,
       });
       if (error) throw new Error(await edgeFunctionErrorMessage(error));
       return normalizeSettingsPayload(data);
@@ -83,11 +100,16 @@ export function useUpdateUserSettings() {
   return useMutation({
     mutationFn: async (updates: Partial<Omit<UserSettings, "id" | "user_id">>) => {
       if (!user) throw new Error("Not signed in");
-      const token = await getAccessToken();
+      const token = await withTimeout(
+        getAccessToken(),
+        ACCESS_TOKEN_TIMEOUT_MS,
+        "Could not refresh your session in time. Try signing out and back in.",
+      );
       const { data, error } = await supabase.functions.invoke("user-settings", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: updates,
+        timeout: USER_SETTINGS_FN_TIMEOUT_MS,
       });
       if (error) throw new Error(await edgeFunctionErrorMessage(error));
       return normalizeSettingsPayload(data);

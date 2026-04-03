@@ -16,7 +16,7 @@ const STEPS = 3;
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { data: settings, isLoading: settingsLoading } = useUserSettings();
+  const { data: settings, isLoading: settingsLoading, isSuccess } = useUserSettings();
   const updateSettings = useUpdateUserSettings();
   const { data: accounts = [] } = useConnectedAccounts();
 
@@ -26,10 +26,10 @@ export default function Onboarding() {
   const [ambientEnabled, setAmbientEnabled] = useState(false);
 
   useEffect(() => {
-    if (!settingsLoading && settings?.onboarding_completed) {
+    if (isSuccess && settings?.onboarding_completed) {
       navigate("/dashboard", { replace: true });
     }
-  }, [settingsLoading, settings?.onboarding_completed, navigate]);
+  }, [isSuccess, settings?.onboarding_completed, navigate]);
 
   const completeOnboarding = async () => {
     const name = displayName.trim();
@@ -55,17 +55,12 @@ export default function Onboarding() {
     }
   };
 
-  if (settingsLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-sm text-muted-foreground">Loading…</p>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6">
       <div className="w-full max-w-lg space-y-8 animate-card-in">
+        {settingsLoading && (
+          <p className="text-center text-xs text-muted-foreground">Checking your account…</p>
+        )}
         <div className="flex flex-col items-center gap-3 text-center">
           <TetherLogo size="lg" />
           <h1 className="font-display text-2xl font-bold text-foreground">Set up Tether</h1>

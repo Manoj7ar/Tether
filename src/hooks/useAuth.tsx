@@ -82,9 +82,8 @@ function AuthBridge({
   } = useAuth0();
   const user = useMemo(() => mapAuth0User(auth0User), [auth0User]);
 
-  // Register synchronously during render so child useEffect (e.g. React Query) never runs
-  // before the getter exists — otherwise Supabase falls back to the anon key and Edge
-  // Functions that expect an Auth0 JWT return "Invalid or expired session".
+  // Register during render so child effects / React Query never run before the getter exists;
+  // otherwise Supabase falls back to the anon key and Edge (Auth0 JWT) returns errors.
   if (isAuthenticated) {
     setSupabaseAccessTokenGetter(async () => getAccessTokenSilently());
   } else {

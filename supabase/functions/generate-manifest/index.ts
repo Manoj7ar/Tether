@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getAiApiKey, getAiChatCompletionsUrl } from "../_shared/ai-gateway.ts";
 import { AuthError, requireAuth0User } from "../_shared/auth.ts";
-import { requireEnv } from "../_shared/env.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -73,15 +73,14 @@ serve(async (req) => {
       );
     }
 
-    const LOVABLE_API_KEY = requireEnv("LOVABLE_API_KEY");
-
+    const aiUrl = getAiChatCompletionsUrl();
     const aiHeaders = {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
+      Authorization: `Bearer ${getAiApiKey()}`,
       "Content-Type": "application/json",
     };
 
     // ========== CALL 1: Generate manifest ==========
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch(aiUrl, {
       method: "POST",
       headers: aiHeaders,
       body: JSON.stringify({
@@ -168,7 +167,7 @@ serve(async (req) => {
     // Run audit and negotiation in parallel
     const [auditResult, negotiationResult] = await Promise.allSettled([
       // Audit
-      fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      fetch(aiUrl, {
         method: "POST",
         headers: aiHeaders,
         body: JSON.stringify({
@@ -183,7 +182,7 @@ serve(async (req) => {
         }),
       }),
       // Negotiation
-      fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      fetch(aiUrl, {
         method: "POST",
         headers: aiHeaders,
         body: JSON.stringify({

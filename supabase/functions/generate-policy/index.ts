@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { getAiApiKey, getAiChatCompletionsUrl } from "../_shared/ai-gateway.ts";
 import { AuthError, requireAuth0User } from "../_shared/auth.ts";
-import { requireEnv } from "../_shared/env.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -38,12 +38,10 @@ serve(async (req) => {
       });
     }
 
-    const LOVABLE_API_KEY = requireEnv("LOVABLE_API_KEY");
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const response = await fetch(getAiChatCompletionsUrl(), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        Authorization: `Bearer ${getAiApiKey()}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -100,7 +98,7 @@ serve(async (req) => {
           status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      throw new Error(`AI gateway error: ${response.status}`);
+      throw new Error(`AI API error: ${response.status}`);
     }
 
     const data = await response.json();

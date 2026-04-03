@@ -8,7 +8,7 @@
 ## Supabase Edge Function secrets
 - Set `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY`.
 - Set `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, and `AUTH0_AUDIENCE`.
-- Set `LOVABLE_API_KEY`.
+- Set `AI_COMPAT_API_URL` and `AI_COMPAT_API_KEY` for generate-manifest / policy / nudges.
 
 ## Auth0 configuration
 - Expose an API audience used for browser access tokens.

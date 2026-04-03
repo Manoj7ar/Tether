@@ -47,7 +47,7 @@ export function useMissionNotifications() {
 
           new Notification(`Tether #${tetherNum} — Approval Required`, {
             body: mission.objective?.slice(0, 120) || "A new mission needs your approval.",
-            icon: "/pwa-192x192.png",
+            icon: "/favicon.svg",
             tag: `mission-${mission.id}`,
             data: { url: `/approve?mission=${mission.id}` },
           });

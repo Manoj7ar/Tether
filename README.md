@@ -2,8 +2,6 @@
 
 **Mission-scoped authorization for AI agents** — human-approved, policy-enforced, time-bounded access to GitHub, Gmail, Google Calendar, and Slack. Built so **agents never receive OAuth credentials**; the platform executes API calls on behalf of the user after checking every action against the active mission, global policies, and (for high-risk operations) **step-up re-authentication**.
 
-[Live demo](https://id-preview--fe3bf8bd-add5-4d99-9106-83e76c3dd246.lovable.app)
-
 ---
 
 ## Hackathon: Authorized to Act (Auth0 for AI Agents)
@@ -104,7 +102,7 @@ User describes task
 ### Mission lifecycle
 
 - Natural language mission creation  
-- AI-generated manifests (Gemini via Lovable AI gateway)  
+- AI-generated manifests (configurable OpenAI-compatible API, e.g. Gemini)  
 - Dual-AI intent verification  
 - Human approval with realtime updates (Supabase Realtime)  
 - Countdown to expiry; mission replay and post-mission summary  
@@ -254,7 +252,7 @@ flowchart TB
 | UI | React 18, TypeScript, Vite, Tailwind CSS, shadcn/ui, Framer Motion |
 | Data & realtime | Supabase (PostgreSQL, Row Level Security, Realtime) |
 | Compute | Supabase Edge Functions |
-| AI | Google Gemini (via Lovable AI gateway / `LOVABLE_API_KEY`) |
+| AI | Google Gemini or any OpenAI-compatible API (`AI_COMPAT_API_URL` + `AI_COMPAT_API_KEY`) |
 | Identity | Auth0 (`@auth0/auth0-react`) |
 | Agent protocol | Model Context Protocol (MCP) over HTTP |
 | PWA | vite-plugin-pwa |
@@ -312,7 +310,8 @@ Configure in the Supabase dashboard (Settings → Edge Functions) or CLI:
 | `AUTH0_CLIENT_ID` | Application client ID |
 | `AUTH0_CLIENT_SECRET` | Application client secret |
 | `AUTH0_AUDIENCE` | Optional JWT audience validation |
-| `LOVABLE_API_KEY` | Gemini / AI gateway (Lovable Cloud) |
+| `AI_COMPAT_API_URL` | Full URL to `POST .../v1/chat/completions` (OpenAI-compatible) |
+| `AI_COMPAT_API_KEY` | Bearer token for that API |
 
 See also [`docs/production-checklist.md`](docs/production-checklist.md) for deployment verification steps.
 

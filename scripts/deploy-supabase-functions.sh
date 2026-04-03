@@ -16,6 +16,7 @@ FUNCS=(
   mission-approve
   step-up-complete
   step-up-status
+  user-settings
 )
 
 for fn in "${FUNCS[@]}"; do

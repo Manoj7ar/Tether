@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -36,22 +36,6 @@ const ProtectedPage = ({ children }: { children: React.ReactNode }) => (
 );
 
 function RouteFallback() {
-  // #region agent log
-  useEffect(() => {
-    fetch("http://127.0.0.1:7331/ingest/73856759-8783-4062-ac2d-fb1e9443f226", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "fa3011" },
-      body: JSON.stringify({
-        sessionId: "fa3011",
-        location: "App.tsx:RouteFallback",
-        message: "suspense_lazy_fallback_mounted",
-        data: { path: typeof window !== "undefined" ? window.location.pathname : "" },
-        timestamp: Date.now(),
-        hypothesisId: "H3",
-      }),
-    }).catch(() => {});
-  }, []);
-  // #endregion
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="text-sm text-muted-foreground">Loading view...</div>

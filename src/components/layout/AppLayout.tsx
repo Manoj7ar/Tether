@@ -15,7 +15,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { Home, Plus, List, LinkIcon, Shield, Settings } from "lucide-react";
-import { ReactNode, useEffect } from "react";
+import { ReactNode } from "react";
 import NotificationBell from "@/components/layout/NotificationBell";
 import { useUserSettings } from "@/hooks/useUserSettings";
 
@@ -34,32 +34,7 @@ function getInitialsFromDisplayName(name: string): string {
 }
 
 function OnboardingGate({ children }: { children: ReactNode }) {
-  const { isError, data: settings, status, fetchStatus, isFetching } = useUserSettings();
-
-  // #region agent log
-  useEffect(() => {
-    fetch("http://127.0.0.1:7331/ingest/73856759-8783-4062-ac2d-fb1e9443f226", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "fa3011" },
-      body: JSON.stringify({
-        sessionId: "fa3011",
-        location: "AppLayout.tsx:OnboardingGate",
-        message: "onboarding_gate_query",
-        data: {
-          queryStatus: status,
-          fetchStatus,
-          isFetching,
-          isError,
-          hasSettings: !!settings,
-          onboarding_completed: settings?.onboarding_completed ?? null,
-          willRedirectToOnboarding: !!(settings && !settings.onboarding_completed && !isError),
-        },
-        timestamp: Date.now(),
-        hypothesisId: "H4",
-      }),
-    }).catch(() => {});
-  }, [status, fetchStatus, isFetching, isError, settings?.onboarding_completed, settings?.id]);
-  // #endregion
+  const { isError, data: settings } = useUserSettings();
 
   // Do not full-screen block on user-settings: if Auth0 token or the Edge function hangs,
   // isLoading stays true forever and the app is a blank "Loading" page. Render the shell

@@ -22,6 +22,11 @@ test-results/
 
 # Ephemeral MCP edge deploy bundle output
 .edge-deploy-bundles/
+.mcp-deploy/
+scripts/edge_mcp_*.json
+
+# Supabase CLI local temp
+supabase/.temp/
 
 # Editor directories and files
 .vscode/*

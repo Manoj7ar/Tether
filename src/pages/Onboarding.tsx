@@ -16,7 +16,7 @@ const STEPS = 3;
 
 export default function Onboarding() {
   const navigate = useNavigate();
-  const { data: settings, isPending: settingsPending } = useUserSettings();
+  const { data: settings, isLoading: settingsLoading } = useUserSettings();
   const updateSettings = useUpdateUserSettings();
   const { data: accounts = [] } = useConnectedAccounts();
 
@@ -26,10 +26,10 @@ export default function Onboarding() {
   const [ambientEnabled, setAmbientEnabled] = useState(false);
 
   useEffect(() => {
-    if (!settingsPending && settings?.onboarding_completed) {
+    if (!settingsLoading && settings?.onboarding_completed) {
       navigate("/dashboard", { replace: true });
     }
-  }, [settingsPending, settings?.onboarding_completed, navigate]);
+  }, [settingsLoading, settings?.onboarding_completed, navigate]);
 
   const completeOnboarding = async () => {
     const name = displayName.trim();
@@ -55,7 +55,7 @@ export default function Onboarding() {
     }
   };
 
-  if (settingsPending) {
+  if (settingsLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <p className="text-sm text-muted-foreground">Loading…</p>

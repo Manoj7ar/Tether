@@ -34,9 +34,20 @@ function getInitialsFromDisplayName(name: string): string {
 }
 
 function OnboardingGate({ children }: { children: ReactNode }) {
-  const { isPending, isError, data: settings } = useUserSettings();
+  const { user } = useAuth();
+  // Use isLoading (pending + fetching), not isPending: when the query is disabled,
+  // isPending stays true with no data but fetchStatus is idle — that would spin forever.
+  const { isLoading, isError, data: settings } = useUserSettings();
 
-  if (isPending) {
+  if (!user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-sm text-muted-foreground">Loading…</div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-sm text-muted-foreground">Loading…</div>

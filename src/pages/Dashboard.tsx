@@ -10,8 +10,10 @@ import MissionTemplates from "@/components/mission/MissionTemplates";
 import TrustScoreCard from "@/components/dashboard/TrustScoreCard";
 import NudgeCards from "@/components/dashboard/NudgeCards";
 import AmbientBudgetCard from "@/components/dashboard/AmbientBudgetCard";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { getEdgeFunctionUrl } from "@/lib/env";
 
@@ -40,10 +42,25 @@ const statusLabels: Record<string, string> = {
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: activeMissions = [], isLoading: missionsLoading } = useActiveMissions();
   const { data: recentActivity = [], isLoading: activityLoading } = useRecentActivity();
   const { data: connectedAccounts = [] } = useConnectedAccounts();
   const { liveEntries } = useRealtimeExecutionLog();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("dashboard-missions")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "missions" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["missions"] });
+        },
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
 
   const mergedActivity = useMemo(() => {
     const seen = new Set<string>();

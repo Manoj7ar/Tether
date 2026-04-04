@@ -36,14 +36,14 @@ export default function Settings() {
     try {
       await updateSettings.mutateAsync({
         demo_mode: enabled,
-        ...(enabled ? { onboarding_completed: true } : {}),
+        ...(enabled ? { onboarding_completed: false } : {}),
       });
       if (enabled) {
         toast({
           title: "Demo mode on",
-          description: "Manifest, policy, nudges, and tool runs use scripted data. OAuth connections stay real.",
+          description: "Starting fresh — walk through onboarding, then create a mission.",
         });
-        navigate("/dashboard");
+        navigate("/onboarding");
       } else {
         toast({ title: "Demo mode off", description: "Restored live AI and provider execution." });
       }

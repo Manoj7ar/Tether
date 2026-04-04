@@ -35,9 +35,9 @@ function usePendingMissionForApproval() {
           event: "*",
           schema: "public",
           table: "missions",
+          filter: `user_id=eq.${user.id}`,
         },
         () => {
-          // Refetch when any mission changes (new pending, status update, etc.)
           queryClient.invalidateQueries({ queryKey: ["pending_approval_mission"] });
         }
       )

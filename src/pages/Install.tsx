@@ -10,8 +10,12 @@ interface BeforeInstallPromptEvent extends Event {
 
 export default function Install() {
   const { supported, permission, requestPermission } = useNotificationPermission();
-  const { subscribed: pushSubscribed } = usePushSubscription();
+  const { subscribed: pushSubscribed } = usePushSubscription(permission);
   const [notifStatus, setNotifStatus] = useState(permission);
+
+  useEffect(() => {
+    setNotifStatus(permission);
+  }, [permission]);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
 

@@ -1,9 +1,17 @@
 /// <reference lib="webworker" />
-import { precacheAndRoute } from "workbox-precaching";
+import { precacheAndRoute, createHandlerBoundToURL } from "workbox-precaching";
+import { NavigationRoute, registerRoute } from "workbox-routing";
 
 declare const self: ServiceWorkerGlobalScope;
 
 precacheAndRoute(self.__WB_MANIFEST);
+
+const navHandler = createHandlerBoundToURL("/index.html");
+registerRoute(
+  new NavigationRoute(navHandler, {
+    denylist: [/^\/~oauth/],
+  }),
+);
 
 interface PushPayload {
   title?: string;

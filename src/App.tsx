@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/hooks/useAuth";
-import { useMissionNotifications, usePushSubscription } from "@/hooks/useNotifications";
+import { useMissionNotifications, usePushSubscription, useNotificationPermission } from "@/hooks/useNotifications";
 import ProtectedRoute from "@/components/layout/ProtectedRoute";
 import AppLayout from "@/components/layout/AppLayout";
 import StepUpOAuthReturn from "@/components/security/StepUpOAuthReturn";
@@ -44,8 +44,9 @@ function RouteFallback() {
 }
 
 function NotificationListener() {
+  const { permission } = useNotificationPermission();
   useMissionNotifications();
-  usePushSubscription();
+  usePushSubscription(permission);
   return null;
 }
 

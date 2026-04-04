@@ -4,17 +4,25 @@ import { useAuth } from "@/hooks/useAuth";
 import { getAppConfig, getSupabaseFunctionsBaseUrl } from "@/lib/env";
 import type { Mission } from "@/hooks/useMissions";
 
+function currentPermission(): NotificationPermission {
+  return typeof window !== "undefined" && "Notification" in window ? Notification.permission : "denied";
+}
+
 export function useNotificationPermission() {
+  const [permission, setPermission] = useState<NotificationPermission>(currentPermission);
+
   const requestPermission = useCallback(async () => {
-    if (!("Notification" in window)) return "denied";
-    if (Notification.permission === "granted") return "granted";
-    if (Notification.permission === "denied") return "denied";
-    return await Notification.requestPermission();
+    if (!("Notification" in window)) return "denied" as const;
+    if (Notification.permission === "granted") return "granted" as const;
+    if (Notification.permission === "denied") return "denied" as const;
+    const result = await Notification.requestPermission();
+    setPermission(result);
+    return result;
   }, []);
 
   return {
     supported: typeof window !== "undefined" && "Notification" in window,
-    permission: typeof window !== "undefined" && "Notification" in window ? Notification.permission : "denied",
+    permission,
     requestPermission,
   };
 }
@@ -74,18 +82,21 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 /**
  * Subscribes the browser to Web Push after notification permission is granted.
  * Sends the subscription to the push-subscribe Edge Function.
- * Safe to call on every render — only subscribes once.
+ *
+ * Pass `notificationPermission` so the effect re-fires when permission changes
+ * (e.g. user taps "Enable Notifications" on /install while already logged in).
  */
-export function usePushSubscription() {
+export function usePushSubscription(notificationPermission?: NotificationPermission) {
   const { user, getAccessToken, isAuthenticated } = useAuth();
   const subscribedRef = useRef(false);
   const [subscribed, setSubscribed] = useState(false);
+  const perm = notificationPermission ?? currentPermission();
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
     if (subscribedRef.current) return;
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    if (Notification.permission !== "granted") return;
+    if (perm !== "granted") return;
 
     const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
     if (!vapidKey) return;
@@ -129,7 +140,7 @@ export function usePushSubscription() {
     })();
 
     return () => { cancelled = true; };
-  }, [isAuthenticated, user, getAccessToken]);
+  }, [isAuthenticated, user, getAccessToken, perm]);
 
   return { subscribed };
 }

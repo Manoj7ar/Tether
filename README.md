@@ -337,8 +337,8 @@ In [Auth0 Dashboard](https://manage.auth0.com) → **Applications**:
 
 | Setting | Value |
 |---------|--------|
-| Application type | Regular Web Application |
-| Allowed Callback URLs | Your SPA origin (e.g. `http://localhost:5173`, production URL) |
+| Application type | **Single Page Application** (matches `@auth0/auth0-react` + PKCE). If you keep **Regular Web Application**, enable **Authorization Code** and **Refresh Token** under **Advanced Settings → Grant Types**, or login fails with `Grant type 'authorization_code' not allowed for the client`. |
+| Allowed Callback URLs | Your SPA origin (e.g. `http://localhost:8080`, production URL) |
 | Allowed Logout URLs | Same origins as appropriate |
 
 ### OAuth callback for connected accounts

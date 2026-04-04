@@ -34,7 +34,10 @@ export default function Settings() {
 
   const handleToggleDemo = async (enabled: boolean) => {
     try {
-      await updateSettings.mutateAsync({ demo_mode: enabled });
+      await updateSettings.mutateAsync({
+        demo_mode: enabled,
+        ...(enabled ? { onboarding_completed: true } : {}),
+      });
       if (enabled) {
         toast({
           title: "Demo mode on",

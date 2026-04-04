@@ -83,7 +83,7 @@ async function jwtVerifyForIssuer(
   return (await jwtVerify(token, jwks, { issuer })).payload;
 }
 
-/** Try env-configured issuers, then token `iss` if its host matches AUTH0_DOMAIN or AUTH0_CUSTOM_DOMAIN. */
+/** Try env-configured issuers, then token `iss` if its host matches allowed domains. */
 async function verifyAuth0AccessToken(token: string): Promise<JWTPayload> {
   const audience = Deno.env.get("AUTH0_AUDIENCE")?.trim() || undefined;
   const domain = getAuth0Domain();
@@ -112,11 +112,43 @@ async function verifyAuth0AccessToken(token: string): Promise<JWTPayload> {
       }
     }
   } catch {
-    // ignore
+    // not a JWT or decode failed — fall through to opaque token check
   }
 
   console.error("Auth0 JWT verification failed:", lastError);
   throw new AuthError("Invalid or expired session", 401);
+}
+
+/**
+ * Validate an opaque Auth0 access token via the /userinfo endpoint.
+ * Auth0 returns opaque tokens when no audience is specified; these cannot be
+ * verified with jose — instead we call Auth0's /userinfo which validates the
+ * token server-side and returns the user profile.
+ */
+async function validateOpaqueToken(token: string): Promise<{ sub: string }> {
+  const domain = getAuth0Domain();
+
+  const res = await fetch(`https://${domain}/userinfo`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    console.error("Auth0 /userinfo failed:", res.status, body);
+    throw new AuthError("Invalid or expired session", 401);
+  }
+
+  const profile = await res.json();
+  if (!profile.sub) {
+    throw new AuthError("Auth0 /userinfo did not return a sub claim", 401);
+  }
+
+  return { sub: profile.sub as string };
+}
+
+function looksLikeJwt(token: string): boolean {
+  const parts = token.split(".");
+  return parts.length === 3 && parts.every((p) => p.length > 0);
 }
 
 export async function requireAuth0User(req: Request): Promise<{
@@ -130,15 +162,26 @@ export async function requireAuth0User(req: Request): Promise<{
   }
 
   const token = authHeader.slice("Bearer ".length);
-  const payload = await verifyAuth0AccessToken(token);
 
-  if (!payload.sub) {
-    throw new AuthError("Unauthorized");
+  if (looksLikeJwt(token)) {
+    try {
+      const payload = await verifyAuth0AccessToken(token);
+      if (!payload.sub) {
+        throw new AuthError("Unauthorized");
+      }
+      return { claims: payload, token, userId: payload.sub };
+    } catch (e) {
+      // If JWT verification fails, try opaque validation as fallback
+      // (some Auth0 configs issue JWTs that don't match expected issuer/audience)
+      console.warn("JWT verification failed, trying /userinfo fallback:", e instanceof Error ? e.message : e);
+    }
   }
 
+  // Opaque token path (no audience configured, or JWT verify failed)
+  const { sub } = await validateOpaqueToken(token);
   return {
-    claims: payload,
+    claims: { sub } as JWTPayload,
     token,
-    userId: payload.sub,
+    userId: sub,
   };
 }

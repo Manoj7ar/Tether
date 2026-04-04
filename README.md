@@ -35,6 +35,7 @@ This project is designed for hackathons such as **[Authorized to Act](https://au
 - [Auth0-centric architecture](#auth0-centric-architecture)
 - [Auth0 and Token Vault](#auth0-and-token-vault)
 - [Auth0 vs Supabase (data flow)](#auth0-vs-supabase-data-flow)
+- [Demo walkthrough (pitch + MCP)](#demo-walkthrough-pitch--mcp)
 - [Security model](#security-model)
 - [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
@@ -315,7 +316,8 @@ Configure in the Supabase dashboard (Settings → Edge Functions) or CLI:
 | `SUPABASE_URL` | Project URL |
 | `SUPABASE_ANON_KEY` | Anon key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Service role (server-side only) |
-| `AUTH0_DOMAIN` | Auth0 tenant |
+| `AUTH0_DOMAIN` | Auth0 tenant (canonical tenant domain, e.g. `dev-xxx.us.auth0.com`) |
+| `AUTH0_CUSTOM_DOMAIN` | Optional. If users sign in via an Auth0 **custom domain**, set it here so Edge can verify JWTs whose `iss` is that host (must match `VITE_AUTH0_DOMAIN` / login domain) |
 | `AUTH0_CLIENT_ID` | Application client ID |
 | `AUTH0_CLIENT_SECRET` | Application client secret |
 | `AUTH0_AUDIENCE` | Optional JWT audience validation |

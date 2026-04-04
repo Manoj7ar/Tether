@@ -2,7 +2,9 @@
  * App preferences and onboarding flags live in Postgres `user_settings`; this hook uses the `user-settings` Edge API only (not direct `from()`).
  * @see docs/auth-supabase-data.md
  */
+import type { GetTokenSilentlyOptions } from "@auth0/auth0-spa-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
@@ -48,6 +50,46 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   onboarding_completed: true,
 };
 
+function isAuthLikeInvokeFailure(error: unknown, message: string): boolean {
+  if (/invalid or expired session|unauthorized/i.test(message)) return true;
+  if (error instanceof FunctionsHttpError && error.context instanceof Response) {
+    return error.context.status === 401;
+  }
+  return false;
+}
+
+/** One retry with a fresh Auth0 access token when Edge rejects the cached token. */
+async function invokeUserSettings(
+  getAccessToken: (options?: GetTokenSilentlyOptions) => Promise<string>,
+  opts: { method: "GET" | "POST"; body?: object },
+): Promise<unknown> {
+  const run = async (forceRefresh: boolean) => {
+    const token = await withTimeout(
+      getAccessToken(forceRefresh ? { cacheMode: "off" } : {}),
+      ACCESS_TOKEN_TIMEOUT_MS,
+      "Could not refresh your session in time. Try signing out and back in.",
+    );
+    return supabase.functions.invoke("user-settings", {
+      method: opts.method,
+      headers: { Authorization: `Bearer ${token}` },
+      ...(opts.method === "POST" ? { body: opts.body } : {}),
+      timeout: USER_SETTINGS_FN_TIMEOUT_MS,
+    });
+  };
+
+  let { data, error } = await run(false);
+  if (error) {
+    const msg = await edgeFunctionErrorMessage(error);
+    if (isAuthLikeInvokeFailure(error, msg)) {
+      ({ data, error } = await run(true));
+    }
+    if (error) {
+      throw new Error(await edgeFunctionErrorMessage(error));
+    }
+  }
+  return data;
+}
+
 function normalizeSettingsPayload(data: unknown): UserSettings {
   const payload = data as { settings?: UserSettings; error?: string } | null;
   if (payload && typeof payload.error === "string" && payload.error.trim()) {
@@ -80,17 +122,7 @@ export function useUserSettings() {
     queryKey: ["user_settings", user?.id],
     queryFn: async (): Promise<UserSettings | null> => {
       if (!user) return null;
-      const token = await withTimeout(
-        getAccessToken(),
-        ACCESS_TOKEN_TIMEOUT_MS,
-        "Could not refresh your session in time. Try signing out and back in.",
-      );
-      const { data, error } = await supabase.functions.invoke("user-settings", {
-        method: "GET",
-        headers: { Authorization: `Bearer ${token}` },
-        timeout: USER_SETTINGS_FN_TIMEOUT_MS,
-      });
-      if (error) throw new Error(await edgeFunctionErrorMessage(error));
+      const data = await invokeUserSettings(getAccessToken, { method: "GET" });
       return normalizeSettingsPayload(data);
     },
     enabled: !!user,
@@ -104,18 +136,10 @@ export function useUpdateUserSettings() {
   return useMutation({
     mutationFn: async (updates: Partial<Omit<UserSettings, "id" | "user_id">>) => {
       if (!user) throw new Error("Not signed in");
-      const token = await withTimeout(
-        getAccessToken(),
-        ACCESS_TOKEN_TIMEOUT_MS,
-        "Could not refresh your session in time. Try signing out and back in.",
-      );
-      const { data, error } = await supabase.functions.invoke("user-settings", {
+      const data = await invokeUserSettings(getAccessToken, {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
         body: updates,
-        timeout: USER_SETTINGS_FN_TIMEOUT_MS,
       });
-      if (error) throw new Error(await edgeFunctionErrorMessage(error));
       return normalizeSettingsPayload(data);
     },
     onSuccess: (data) => {

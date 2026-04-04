@@ -3,6 +3,7 @@
  * Supabase receives this token via `setSupabaseAccessTokenGetter`; do not use Supabase Auth for login.
  * @see docs/auth-supabase-data.md
  */
+import type { GetTokenSilentlyOptions } from "@auth0/auth0-spa-js";
 import {
   Auth0Provider,
   useAuth0,
@@ -72,7 +73,8 @@ interface LoginOptions {
 }
 
 interface AuthContextType {
-  getAccessToken: () => Promise<string>;
+  /** Pass `{ cacheMode: 'off' }` to force a refresh when Edge returns 401 / expired session. */
+  getAccessToken: (options?: GetTokenSilentlyOptions) => Promise<string>;
   isAuthenticated: boolean;
   loading: boolean;
   login: (options?: LoginOptions) => Promise<void>;
@@ -82,7 +84,7 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType>({
-  getAccessToken: async () => {
+  getAccessToken: async (_options?: GetTokenSilentlyOptions) => {
     throw new Error("Authentication is not configured");
   },
   isAuthenticated: false,
@@ -149,7 +151,8 @@ function AuthBridge({
   }, []);
 
   const value = useMemo<AuthContextType>(() => ({
-    getAccessToken: async () => getAccessTokenSilently(),
+    getAccessToken: async (options?: GetTokenSilentlyOptions) =>
+      getAccessTokenSilently(options ?? {}),
     isAuthenticated,
     loading: isLoading,
     login: async ({ returnTo, screenHint } = {}) => {

@@ -1,4 +1,9 @@
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "https://esm.sh/jose@5.9.6";
+import {
+  createRemoteJWKSet,
+  decodeJwt,
+  jwtVerify,
+  type JWTPayload,
+} from "https://esm.sh/jose@5.9.6";
 
 export class AuthError extends Error {
   status: number;
@@ -10,9 +15,13 @@ export class AuthError extends Error {
   }
 }
 
+function normalizeAuth0Host(raw: string): string {
+  return raw.replace(/^https?:\/\//, "").replace(/\/.*$/, "").trim();
+}
+
 function getAuth0Domain() {
   const rawDomain = Deno.env.get("AUTH0_DOMAIN");
-  const normalized = rawDomain?.replace(/^https?:\/\//, "").replace(/\/.*$/, "") ?? "";
+  const normalized = normalizeAuth0Host(rawDomain ?? "");
 
   if (!normalized) {
     throw new AuthError("Server authentication is not configured", 503);
@@ -23,15 +32,91 @@ function getAuth0Domain() {
 
 const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
-function getJwks(domain: string) {
-  const cached = jwksCache.get(domain);
+function getJwks(host: string) {
+  const cached = jwksCache.get(host);
   if (cached) {
     return cached;
   }
 
-  const jwks = createRemoteJWKSet(new URL(`https://${domain}/.well-known/jwks.json`));
-  jwksCache.set(domain, jwks);
+  const jwks = createRemoteJWKSet(new URL(`https://${host}/.well-known/jwks.json`));
+  jwksCache.set(host, jwks);
   return jwks;
+}
+
+function issuerUrlsForEnv(): string[] {
+  const domain = getAuth0Domain();
+  const urls = new Set<string>();
+  urls.add(`https://${domain}/`);
+
+  const customRaw = Deno.env.get("AUTH0_CUSTOM_DOMAIN")?.trim() ?? "";
+  if (customRaw) {
+    const host = normalizeAuth0Host(customRaw);
+    if (host && host !== domain) {
+      urls.add(`https://${host}/`);
+    }
+  }
+  return [...urls];
+}
+
+function normalizeIssuerUrl(iss: string): string {
+  const trimmed = iss.trim();
+  return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
+}
+
+async function jwtVerifyForIssuer(
+  token: string,
+  issuerUrl: string,
+  audience: string | undefined,
+): Promise<JWTPayload> {
+  const issuer = normalizeIssuerUrl(issuerUrl);
+  const host = new URL(issuer).hostname;
+  const jwks = getJwks(host);
+
+  if (audience) {
+    try {
+      return (await jwtVerify(token, jwks, { audience, issuer })).payload;
+    } catch {
+      return (await jwtVerify(token, jwks, { issuer })).payload;
+    }
+  }
+
+  return (await jwtVerify(token, jwks, { issuer })).payload;
+}
+
+/** Try env-configured issuers, then token `iss` if its host matches AUTH0_DOMAIN or AUTH0_CUSTOM_DOMAIN. */
+async function verifyAuth0AccessToken(token: string): Promise<JWTPayload> {
+  const audience = Deno.env.get("AUTH0_AUDIENCE")?.trim() || undefined;
+  const domain = getAuth0Domain();
+  const customRaw = Deno.env.get("AUTH0_CUSTOM_DOMAIN")?.trim() ?? "";
+  const customHost = customRaw ? normalizeAuth0Host(customRaw) : "";
+
+  const allowedHosts = new Set<string>([domain]);
+  if (customHost) allowedHosts.add(customHost);
+
+  let lastError: unknown;
+  for (const issuerUrl of issuerUrlsForEnv()) {
+    try {
+      return await jwtVerifyForIssuer(token, issuerUrl, audience);
+    } catch (e) {
+      lastError = e;
+    }
+  }
+
+  try {
+    const claims = decodeJwt(token);
+    const issRaw = typeof claims.iss === "string" ? claims.iss : "";
+    if (issRaw) {
+      const host = new URL(normalizeIssuerUrl(issRaw)).hostname;
+      if (allowedHosts.has(host)) {
+        return await jwtVerifyForIssuer(token, issRaw, audience);
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  console.error("Auth0 JWT verification failed:", lastError);
+  throw new AuthError("Invalid or expired session", 401);
 }
 
 export async function requireAuth0User(req: Request): Promise<{
@@ -44,27 +129,8 @@ export async function requireAuth0User(req: Request): Promise<{
     throw new AuthError("Unauthorized");
   }
 
-  const domain = getAuth0Domain();
   const token = authHeader.slice("Bearer ".length);
-  const audience = Deno.env.get("AUTH0_AUDIENCE")?.trim() || undefined;
-  const issuer = `https://${domain}/`;
-  const jwks = getJwks(domain);
-
-  let payload: JWTPayload;
-  try {
-    if (audience) {
-      try {
-        ({ payload } = await jwtVerify(token, jwks, { audience, issuer }));
-      } catch {
-        // SPA may omit API audience while Edge has AUTH0_AUDIENCE set; issuer-only is still Auth0.
-        ({ payload } = await jwtVerify(token, jwks, { issuer }));
-      }
-    } else {
-      ({ payload } = await jwtVerify(token, jwks, { issuer }));
-    }
-  } catch {
-    throw new AuthError("Invalid or expired session", 401);
-  }
+  const payload = await verifyAuth0AccessToken(token);
 
   if (!payload.sub) {
     throw new AuthError("Unauthorized");

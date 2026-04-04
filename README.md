@@ -8,6 +8,10 @@
 
 This project is designed for hackathons such as **[Authorized to Act](https://authorizedtoact.devpost.com/)**, where teams build **agentic applications** using **Auth0 for AI Agents** and the **[Token Vault](https://auth0.com/features/token-vault)** pattern.
 
+### For judges: Token Vault evidence
+
+**Hackathon requirement — proof bundle:** [`docs/judges-token-vault-proof.md`](docs/judges-token-vault-proof.md) (code references, sequence diagram, verification script). Optional corroborating screenshots live in [`docs/judges-evidence/`](docs/judges-evidence/) — see that folder’s README for filenames.
+
 **What judges should look for in Tether**
 
 | Criterion | How Tether addresses it |
@@ -27,6 +31,7 @@ This project is designed for hackathons such as **[Authorized to Act](https://au
 
 ## Table of contents
 
+- [Hackathon + judges: Token Vault proof](#hackathon-authorized-to-act-auth0-for-ai-agents)
 - [Problem](#problem)
 - [Solution](#solution)
 - [How it works](#how-it-works)
@@ -222,7 +227,7 @@ flowchart TB
 
 - **Connected accounts** (GitHub, Google properties, Slack) use the **`auth0-token-vault`** Edge Function: **authorize** → **callback** → **token exchange** with Auth0, then persistence of **encrypted** material for server-side API execution. Connect and reauth flows support an optional **`returnPath`** so users land back on the same screen after OAuth (e.g. mission detail or mobile approval).
 
-- For hackathon narrative, position Tether as: **Auth0 orchestrates OAuth and consent**; **Tether never exposes tokens to the agent**; **execution is server-side and audited**. Align wording with your actual Auth0 **Token Vault** product usage in the tenant you demo.
+- **Hackathon / judges:** consolidated **Token Vault** evidence (code map, diagram, screenshot checklist) is in [`docs/judges-token-vault-proof.md`](docs/judges-token-vault-proof.md).
 
 ---
 

@@ -166,40 +166,59 @@ function AuthBridge({
   // and the SessionExpiredBanner prompts a manual re-login.
   const resilientGetToken = useCallback(async (options?: GetTokenSilentlyOptions): Promise<string> => {
     try {
-      return await getTokenRef.current(options ?? {});
+      const token = await getTokenRef.current(options ?? {});
+      if (sessionExpiredRef.current) markSessionExpired(false);
+      return token;
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
       const isLoginErr = /login.required|login_required|consent.required/i.test(msg);
 
       if (isLoginErr && !options?.cacheMode) {
         try {
-          return await getTokenRef.current({ cacheMode: "off" });
+          const token = await getTokenRef.current({ cacheMode: "off" });
+          if (sessionExpiredRef.current) markSessionExpired(false);
+          return token;
         } catch {
+          // Both attempts failed — session is truly expired
+          if (lastGoodUserRef.current && !isRealLogout.current) {
+            markSessionExpired(true);
+          }
           throw err;
         }
       }
+
+      // Non-login error that still means we can't get a token
+      if (isLoginErr && lastGoodUserRef.current && !isRealLogout.current) {
+        markSessionExpired(true);
+      }
       throw err;
     }
-  }, []);
+  }, [markSessionExpired]);
 
   // Derive stable isAuthenticated / loading:
   const isAuthenticated = rawIsAuthenticated || (!!user && !isRealLogout.current);
   const isLoading = rawIsLoading && !user;
 
-  // Detect persistent session expiry: Auth0 SDK dropped auth but we still
-  // have a cached user from a previous successful login.
+  // Detect persistent session expiry. We do NOT react to transient
+  // rawIsAuthenticated flickers — those happen during normal silent-auth
+  // refreshes and cause false positives. Instead, sessionExpired is set
+  // only when a real token acquisition attempt fails hard.
   const [sessionExpired, setSessionExpired] = useState(false);
+  const sessionExpiredRef = useRef(false);
 
+  // Provide a setter that dedupes and keeps the ref in sync
+  const markSessionExpired = useCallback((expired: boolean) => {
+    if (sessionExpiredRef.current === expired) return;
+    sessionExpiredRef.current = expired;
+    setSessionExpired(expired);
+  }, []);
+
+  // Clear expiry when a fresh Auth0 session appears (user logged back in)
   useLayoutEffect(() => {
-    if (rawIsLoading) return;
-    if (rawIsAuthenticated) {
-      setSessionExpired(false);
-      return;
+    if (!rawIsLoading && rawIsAuthenticated && sessionExpiredRef.current) {
+      markSessionExpired(false);
     }
-    if (!isRealLogout.current && lastGoodUserRef.current) {
-      setSessionExpired(true);
-    }
-  }, [rawIsAuthenticated, rawIsLoading]);
+  }, [rawIsAuthenticated, rawIsLoading, markSessionExpired]);
 
   // Silent token getter for the Supabase client's accessToken callback.
   // Must never throw or redirect — Supabase calls it on every operation
@@ -207,15 +226,19 @@ function AuthBridge({
   // anonymously; the explicit getAccessToken calls handle errors visibly.
   const silentGetToken = useCallback(async (): Promise<string | null> => {
     try {
-      return await getTokenRef.current({});
+      const token = await getTokenRef.current({});
+      if (sessionExpiredRef.current) markSessionExpired(false);
+      return token;
     } catch {
       try {
-        return await getTokenRef.current({ cacheMode: "off" });
+        const token = await getTokenRef.current({ cacheMode: "off" });
+        if (sessionExpiredRef.current) markSessionExpired(false);
+        return token;
       } catch {
         return null;
       }
     }
-  }, []);
+  }, [markSessionExpired]);
 
   useLayoutEffect(() => {
     if (isAuthenticated) {

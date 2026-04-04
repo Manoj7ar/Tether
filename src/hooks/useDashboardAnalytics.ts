@@ -1,12 +1,10 @@
 import type { GetTokenSilentlyOptions } from "@auth0/auth0-spa-js";
 import { useQuery } from "@tanstack/react-query";
-import { FunctionsHttpError } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 import { subDays, format, startOfDay } from "date-fns";
 
 const TOKEN_TIMEOUT_MS = 20_000;
+const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/missions-api`;
 
 function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   let tid: ReturnType<typeof setTimeout>;
@@ -14,38 +12,34 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   return Promise.race([p, tp]).finally(() => clearTimeout(tid!));
 }
 
-function isAuthFailure(error: unknown, msg: string): boolean {
-  if (/invalid or expired session|unauthorized/i.test(msg)) return true;
-  if (error instanceof FunctionsHttpError && error.context instanceof Response) {
-    return error.context.status === 401;
-  }
-  return false;
-}
-
 async function callAnalytics(
   getAccessToken: (opts?: GetTokenSilentlyOptions) => Promise<string>,
 ): Promise<{ missions: { id: string; status: string; risk_level: string | null; created_at: string }[]; logs: { id: string; status: string; timestamp: string }[] }> {
-  const run = async (force: boolean) => {
-    const token = await withTimeout(
-      getAccessToken(force ? { cacheMode: "off" } : {}),
-      TOKEN_TIMEOUT_MS,
-      "Session expired.",
-    );
-    return supabase.functions.invoke("missions-api", {
-      body: { action: "analytics" },
-      headers: { Authorization: `Bearer ${token}` },
+  const doFetch = async (token: string) => {
+    const res = await fetch(FUNCTIONS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ action: "analytics" }),
     });
+    const json = await res.json().catch(() => null);
+    return { status: res.status, json };
   };
 
-  let { data, error } = await run(false);
-  if (error) {
-    const msg = await edgeFunctionErrorMessage(error);
-    if (isAuthFailure(error, msg)) ({ data, error } = await run(true));
-    if (error) throw new Error(await edgeFunctionErrorMessage(error));
+  const token = await withTimeout(getAccessToken(), TOKEN_TIMEOUT_MS, "Session expired.");
+  let { status, json } = await doFetch(token);
+
+  if (status === 401) {
+    const fresh = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
+    ({ status, json } = await doFetch(fresh));
   }
-  const payload = data as { data?: { missions: []; logs: [] }; error?: string } | null;
-  if (payload?.error) throw new Error(payload.error);
-  return payload?.data ?? { missions: [], logs: [] };
+
+  if (!json) throw new Error("Empty response");
+  if (status >= 400) throw new Error(json.error || `Server error (${status})`);
+  if (json.error) throw new Error(json.error);
+  return json.data ?? { missions: [], logs: [] };
 }
 
 export function useDashboardAnalytics() {

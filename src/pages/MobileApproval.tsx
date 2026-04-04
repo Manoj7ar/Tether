@@ -5,11 +5,9 @@ import TetherLogo from "@/components/layout/TetherLogo";
 import { useAuth } from "@/hooks/useAuth";
 import { useMissionPermissions, useUpdateMissionStatus, type Mission } from "@/hooks/useMissions";
 import { supabase } from "@/integrations/supabase/client";
-import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/error-utils";
-import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 import StepUpVerificationPanel from "@/components/security/StepUpVerificationPanel";
 import { useMissionStepUpGate } from "@/hooks/useStepUp";
 
@@ -49,32 +47,30 @@ function usePendingMissionForApproval() {
     };
   }, [user, queryClient]);
 
+  const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/missions-api`;
+
   return useQuery({
     queryKey: ["pending_approval_mission", missionIdParam],
     queryFn: async (): Promise<Mission | null> => {
+      const doFetch = async (token: string) => {
+        const res = await fetch(FUNCTIONS_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ action: "get_pending", ...(missionIdParam ? { id: missionIdParam } : {}) }),
+        });
+        const json = await res.json().catch(() => null);
+        return { status: res.status, json };
+      };
+
       const token = await getAccessToken();
-      const { data, error } = await supabase.functions.invoke("missions-api", {
-        body: { action: "get_pending", ...(missionIdParam ? { id: missionIdParam } : {}) },
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (error) {
-        const msg = await edgeFunctionErrorMessage(error);
-        if (error instanceof FunctionsHttpError && error.context instanceof Response && error.context.status === 401) {
-          const freshToken = await getAccessToken({ cacheMode: "off" });
-          const retry = await supabase.functions.invoke("missions-api", {
-            body: { action: "get_pending", ...(missionIdParam ? { id: missionIdParam } : {}) },
-            headers: { Authorization: `Bearer ${freshToken}` },
-          });
-          if (retry.error) throw new Error(await edgeFunctionErrorMessage(retry.error));
-          const rp = retry.data as { data?: Mission; error?: string } | null;
-          if (rp?.error) throw new Error(rp.error);
-          return rp?.data ?? null;
-        }
-        throw new Error(msg);
+      let { status, json } = await doFetch(token);
+
+      if (status === 401) {
+        const fresh = await getAccessToken({ cacheMode: "off" });
+        ({ status, json } = await doFetch(fresh));
       }
-      const payload = data as { data?: Mission; error?: string } | null;
-      if (payload?.error) throw new Error(payload.error);
-      return payload?.data ?? null;
+      if (status >= 400 && json?.error) throw new Error(json.error);
+      return json?.data ?? null;
     },
     enabled: !!user,
     refetchInterval: 5000,

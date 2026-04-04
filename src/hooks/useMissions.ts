@@ -1,13 +1,6 @@
-/**
- * Mission hooks — all queries go through the `missions-api` Edge Function
- * (service-role key) so Auth0 opaque tokens work with Postgres.
- */
 import type { GetTokenSilentlyOptions } from "@auth0/auth0-spa-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { FunctionsHttpError } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 import type { Tables } from "@/integrations/supabase/types";
 
 export type Mission = Tables<"missions">;
@@ -16,19 +9,12 @@ export type ExecutionLogEntry = Tables<"execution_log">;
 export type ConnectedAccount = Tables<"connected_accounts">;
 
 const TOKEN_TIMEOUT_MS = 20_000;
+const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/missions-api`;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
   let tid: ReturnType<typeof setTimeout>;
   const tp = new Promise<never>((_, rej) => { tid = setTimeout(() => rej(new Error(msg)), ms); });
   return Promise.race([promise, tp]).finally(() => clearTimeout(tid!));
-}
-
-function isAuthFailure(error: unknown, msg: string): boolean {
-  if (/invalid or expired session|unauthorized/i.test(msg)) return true;
-  if (error instanceof FunctionsHttpError && error.context instanceof Response) {
-    return error.context.status === 401;
-  }
-  return false;
 }
 
 function isLoginRequired(err: unknown): boolean {
@@ -39,45 +25,53 @@ async function callMissionsApi(
   getAccessToken: (opts?: GetTokenSilentlyOptions) => Promise<string>,
   body: Record<string, unknown>,
 ): Promise<unknown> {
-  const run = async (force: boolean) => {
-    let token: string;
-    try {
+  const doFetch = async (token: string) => {
+    const res = await fetch(FUNCTIONS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const json = await res.json().catch(() => null);
+    return { status: res.status, json };
+  };
+
+  let token: string;
+  try {
+    token = await withTimeout(
+      getAccessToken(),
+      TOKEN_TIMEOUT_MS,
+      "Session expired — try signing out and back in.",
+    );
+  } catch (e) {
+    if (isLoginRequired(e)) {
       token = await withTimeout(
-        getAccessToken(force ? { cacheMode: "off" } : {}),
+        getAccessToken({ cacheMode: "off" }),
         TOKEN_TIMEOUT_MS,
         "Session expired — try signing out and back in.",
       );
-    } catch (e) {
-      if (!force && isLoginRequired(e)) {
-        token = await withTimeout(
-          getAccessToken({ cacheMode: "off" }),
-          TOKEN_TIMEOUT_MS,
-          "Session expired — try signing out and back in.",
-        );
-      } else {
-        throw e;
-      }
+    } else {
+      throw e;
     }
-    return supabase.functions.invoke("missions-api", {
-      body,
-      headers: { Authorization: `Bearer ${token}` },
-    });
-  };
-
-  let { data, error } = await run(false);
-  if (error) {
-    const msg = await edgeFunctionErrorMessage(error);
-    if (isAuthFailure(error, msg)) {
-      ({ data, error } = await run(true));
-    }
-    if (error) throw new Error(await edgeFunctionErrorMessage(error));
   }
 
-  const payload = data as { data?: unknown; error?: string } | null;
-  if (payload && typeof payload.error === "string" && payload.error.trim()) {
-    throw new Error(payload.error);
+  let { status, json } = await doFetch(token);
+
+  if (status === 401) {
+    const freshToken = await withTimeout(
+      getAccessToken({ cacheMode: "off" }),
+      TOKEN_TIMEOUT_MS,
+      "Session expired — try signing out and back in.",
+    );
+    ({ status, json } = await doFetch(freshToken));
   }
-  return payload?.data ?? null;
+
+  if (!json) throw new Error("Empty response from server");
+  if (status >= 400) throw new Error(json.error || `Server error (${status})`);
+  if (json.error) throw new Error(json.error);
+  return json.data ?? null;
 }
 
 // ── Hooks ──────────────────────────────────────────────────────────────

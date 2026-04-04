@@ -7,7 +7,6 @@ import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 import { subDays, format, startOfDay } from "date-fns";
 
 const TOKEN_TIMEOUT_MS = 20_000;
-const FN_TIMEOUT_MS = 25_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   let tid: ReturnType<typeof setTimeout>;
@@ -35,7 +34,6 @@ async function callAnalytics(
     return supabase.functions.invoke("missions-api", {
       body: { action: "analytics" },
       headers: { Authorization: `Bearer ${token}` },
-      timeout: FN_TIMEOUT_MS,
     });
   };
 

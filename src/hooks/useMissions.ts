@@ -16,7 +16,6 @@ export type ExecutionLogEntry = Tables<"execution_log">;
 export type ConnectedAccount = Tables<"connected_accounts">;
 
 const TOKEN_TIMEOUT_MS = 20_000;
-const FN_TIMEOUT_MS = 25_000;
 
 function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
   let tid: ReturnType<typeof setTimeout>;
@@ -60,13 +59,8 @@ async function callMissionsApi(
       }
     }
     return supabase.functions.invoke("missions-api", {
-      method: "POST",
       body,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      timeout: FN_TIMEOUT_MS,
+      headers: { Authorization: `Bearer ${token}` },
     });
   };
 

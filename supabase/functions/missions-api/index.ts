@@ -1,8 +1,5 @@
-/**
- * Missions CRUD — zero-dependency Edge Function.
- * Uses raw fetch against the PostgREST API instead of the Supabase JS
- * client to stay well under the Edge Function memory limit.
- */
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -19,18 +16,18 @@ function jsonRes(body: unknown, status = 200) {
 
 function env(n: string): string {
   const v = Deno.env.get(n);
-  if (!v) throw { message: `${n} not configured`, status: 503 };
+  if (!v) throw Object.assign(new Error(`${n} not configured`), { status: 503 });
   return v;
 }
 
 async function auth(req: Request): Promise<string> {
   const h = req.headers.get("Authorization");
-  if (!h?.startsWith("Bearer ")) throw { message: "Unauthorized", status: 401 };
+  if (!h?.startsWith("Bearer ")) throw Object.assign(new Error("Unauthorized"), { status: 401 });
   const domain = env("AUTH0_DOMAIN").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
   const r = await fetch(`https://${domain}/userinfo`, { headers: { Authorization: h } });
-  if (!r.ok) throw { message: "Invalid or expired session", status: 401 };
+  if (!r.ok) throw Object.assign(new Error("Invalid or expired session"), { status: 401 });
   const p = await r.json();
-  if (!p.sub) throw { message: "No user ID", status: 401 };
+  if (!p.sub) throw Object.assign(new Error("No user ID"), { status: 401 });
   return p.sub as string;
 }
 
@@ -76,7 +73,7 @@ function qs(params: Record<string, string>): string {
   return Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
 }
 
-Deno.serve(async (req: Request) => {
+serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
   try {
@@ -92,7 +89,7 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await pg("GET", "missions", {
           query: `user_id=eq.${userId}&order=created_at.desc${f}&select=*`,
         });
-        if (error) throw { message: error, status: 500 };
+        if (error) return jsonRes({ error }, 500);
         return jsonRes({ data });
       }
 
@@ -100,7 +97,7 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await pg("GET", "missions", {
           query: `user_id=eq.${userId}&status=in.(active,pending)&order=created_at.desc&select=*`,
         });
-        if (error) throw { message: error, status: 500 };
+        if (error) return jsonRes({ error }, 500);
         return jsonRes({ data });
       }
 
@@ -109,7 +106,7 @@ Deno.serve(async (req: Request) => {
           query: `id=eq.${body.id}&user_id=eq.${userId}&select=*`,
           single: true,
         });
-        if (error) throw { message: error, status: 500 };
+        if (error) return jsonRes({ error }, 500);
         return jsonRes({ data });
       }
 
@@ -129,7 +126,7 @@ Deno.serve(async (req: Request) => {
           single: true,
           prefer: "return=representation",
         });
-        if (error) throw { message: error, status: 500 };
+        if (error) return jsonRes({ error }, 500);
 
         const perms = body.permissions as { provider: string; scope: string; action_type: string; reason?: string }[] | undefined;
         if (Array.isArray(perms) && perms.length > 0) {
@@ -172,7 +169,7 @@ Deno.serve(async (req: Request) => {
           single: true,
           prefer: "return=representation",
         });
-        if (error) throw { message: error, status: 500 };
+        if (error) return jsonRes({ error }, 500);
         return jsonRes({ data });
       }
 
@@ -182,7 +179,7 @@ Deno.serve(async (req: Request) => {
           query: `${idFilter}user_id=eq.${userId}&status=eq.pending&order=created_at.desc&limit=1&select=*`,
           single: true,
         });
-        if (error && !error.includes("JSON object requested")) throw { message: error, status: 500 };
+        if (error && !error.includes("JSON object requested")) return jsonRes({ error }, 500);
         return jsonRes({ data: data ?? null });
       }
 
@@ -190,7 +187,7 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await pg("GET", "mission_permissions", {
           query: `mission_id=eq.${body.mission_id}&select=*`,
         });
-        if (error) throw { message: error, status: 500 };
+        if (error) return jsonRes({ error }, 500);
         return jsonRes({ data });
       }
 
@@ -199,7 +196,7 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await pg("GET", "execution_log", {
           query: `user_id=eq.${userId}&order=timestamp.desc&limit=${body.limit ?? 100}${mf}&select=*`,
         });
-        if (error) throw { message: error, status: 500 };
+        if (error) return jsonRes({ error }, 500);
         return jsonRes({ data });
       }
 
@@ -211,7 +208,7 @@ Deno.serve(async (req: Request) => {
           single: true,
           prefer: "return=representation",
         });
-        if (error) throw { message: error, status: 500 };
+        if (error) return jsonRes({ error }, 500);
         return jsonRes({ data });
       }
 
@@ -219,7 +216,7 @@ Deno.serve(async (req: Request) => {
         const { data, error } = await pg("GET", "connected_accounts", {
           query: `user_id=eq.${userId}&order=connected_at.desc&select=id,provider,provider_username,scopes,connected_at,is_active,user_id`,
         });
-        if (error) throw { message: error, status: 500 };
+        if (error) return jsonRes({ error }, 500);
         return jsonRes({ data });
       }
 
@@ -228,8 +225,8 @@ Deno.serve(async (req: Request) => {
           pg("GET", "missions", { query: `user_id=eq.${userId}&select=id,status` }),
           pg("GET", "execution_log", { query: `user_id=eq.${userId}&select=id,status` }),
         ]);
-        if (mRes.error) throw { message: mRes.error, status: 500 };
-        if (lRes.error) throw { message: lRes.error, status: 500 };
+        if (mRes.error) return jsonRes({ error: mRes.error }, 500);
+        if (lRes.error) return jsonRes({ error: lRes.error }, 500);
         const missions = (mRes.data ?? []) as PgResult;
         const logs = (lRes.data ?? []) as PgResult;
         return jsonRes({
@@ -246,8 +243,8 @@ Deno.serve(async (req: Request) => {
           pg("GET", "missions", { query: `user_id=eq.${userId}&select=id,status,risk_level,created_at` }),
           pg("GET", "execution_log", { query: `user_id=eq.${userId}&select=id,status,timestamp` }),
         ]);
-        if (mRes.error) throw { message: mRes.error, status: 500 };
-        if (lRes.error) throw { message: lRes.error, status: 500 };
+        if (mRes.error) return jsonRes({ error: mRes.error }, 500);
+        if (lRes.error) return jsonRes({ error: lRes.error }, 500);
         return jsonRes({ data: { missions: mRes.data ?? [], logs: lRes.data ?? [] } });
       }
 

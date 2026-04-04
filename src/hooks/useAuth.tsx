@@ -15,6 +15,7 @@ import {
   useContext,
   useLayoutEffect,
   useMemo,
+  useRef,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -83,6 +84,13 @@ interface AuthContextType {
   user: AuthUser | null;
 }
 
+/**
+ * Auth0 can briefly flip `isAuthenticated` during silent token work. Clearing the Supabase
+ * JWT getter immediately makes `functions.invoke` (e.g. mission-approve) use the anon key → 401
+ * and triggers route guards that send users back to /auth.
+ */
+const SUPABASE_JWT_CLEAR_DELAY_MS = 1400;
+
 const AuthContext = createContext<AuthContextType>({
   getAccessToken: async (_options?: GetTokenSilentlyOptions) => {
     throw new Error("Authentication is not configured");
@@ -137,14 +145,26 @@ function AuthBridge({
     user: auth0User,
   } = useAuth0();
   const user = useMemo(() => mapAuth0User(auth0User), [auth0User]);
+  const getTokenRef = useRef(getAccessTokenSilently);
+  getTokenRef.current = getAccessTokenSilently;
 
-  // Register during render so child effects / React Query never run before the getter exists;
-  // otherwise Supabase falls back to the anon key and Edge (Auth0 JWT) returns errors.
-  if (isAuthenticated) {
-    setSupabaseAccessTokenGetter(async () => getAccessTokenSilently());
-  } else {
-    setSupabaseAccessTokenGetter(null);
-  }
+  useLayoutEffect(() => {
+    const getter = async () => getTokenRef.current();
+
+    if (isAuthenticated) {
+      setSupabaseAccessTokenGetter(getter);
+      return;
+    }
+
+    if (isLoading) {
+      return;
+    }
+
+    const t = window.setTimeout(() => {
+      setSupabaseAccessTokenGetter(null);
+    }, SUPABASE_JWT_CLEAR_DELAY_MS);
+    return () => window.clearTimeout(t);
+  }, [isAuthenticated, isLoading]);
 
   useLayoutEffect(() => {
     return () => setSupabaseAccessTokenGetter(null);

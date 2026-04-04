@@ -1,9 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-
-/** Auth0 can briefly report `isAuthenticated: false` during hydration / token work; avoid redirect loops. */
-const UNAUTH_REDIRECT_DELAY_MS = 600;
+import { AUTH_UNAUTH_STABLE_MS } from "@/lib/auth-session";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
@@ -15,7 +13,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
       setAllowLoginRedirect(false);
       return;
     }
-    const t = window.setTimeout(() => setAllowLoginRedirect(true), UNAUTH_REDIRECT_DELAY_MS);
+    const t = window.setTimeout(() => setAllowLoginRedirect(true), AUTH_UNAUTH_STABLE_MS);
     return () => window.clearTimeout(t);
   }, [loading, isAuthenticated]);
 

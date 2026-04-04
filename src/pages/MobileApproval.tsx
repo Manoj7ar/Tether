@@ -10,6 +10,7 @@ import { toast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/error-utils";
 import StepUpVerificationPanel from "@/components/security/StepUpVerificationPanel";
 import { useMissionStepUpGate } from "@/hooks/useStepUp";
+import { AUTH_UNAUTH_STABLE_MS } from "@/lib/auth-session";
 
 interface MissionManifest {
   intentVerification?: { reasoning: string; verdict: "passed" | "warning" | "failed" };
@@ -80,7 +81,7 @@ function usePendingMissionForApproval() {
 type ScreenState = "waiting" | "pending" | "approved" | "rejected";
 
 export default function MobileApproval() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const { data: pendingMission, isLoading } = usePendingMissionForApproval();
   const { data: permissions = [] } = useMissionPermissions(pendingMission?.id);
@@ -91,12 +92,16 @@ export default function MobileApproval() {
   );
   const [screenState, setScreenState] = useState<ScreenState>("waiting");
 
-  // Redirect to login if not authenticated
+  // Same debounce as ProtectedRoute: Auth0 can briefly report logged out during silent refresh.
   useEffect(() => {
-    if (!authLoading && !user) {
-      navigate("/auth", { replace: true, state: { returnTo: "/approve" } });
+    if (authLoading || isAuthenticated) {
+      return;
     }
-  }, [authLoading, user, navigate]);
+    const t = window.setTimeout(() => {
+      navigate("/auth", { replace: true, state: { returnTo: "/approve" } });
+    }, AUTH_UNAUTH_STABLE_MS);
+    return () => window.clearTimeout(t);
+  }, [authLoading, isAuthenticated, navigate]);
   // Sync screen state with data
   useEffect(() => {
     if (pendingMission) {
@@ -144,8 +149,20 @@ export default function MobileApproval() {
     );
   }
 
-  if (!user) {
-    return null;
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+        <p className="text-sm text-muted-foreground text-center">Checking session…</p>
+      </div>
+    );
+  }
+
+  if (!user?.sub) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-6">
+        <p className="text-sm text-muted-foreground text-center">Loading profile…</p>
+      </div>
+    );
   }
 
   if (screenState === "approved") {

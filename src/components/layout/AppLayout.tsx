@@ -135,16 +135,7 @@ function UserSection() {
 
 
 function DemoModeBanner() {
-  const { data: settings } = useUserSettings();
-  if (!settings?.demo_mode) return null;
-  return (
-    <div
-      role="status"
-      className="shrink-0 border-b border-accent/40 bg-accent/10 px-4 py-2 text-center text-xs font-medium text-foreground"
-    >
-      Demo mode — AI outputs and provider tool calls are simulated. OAuth sign-in and account linking stay real.
-    </div>
-  );
+  return null;
 }
 
 export default function AppLayout({ children }: { children: ReactNode }) {

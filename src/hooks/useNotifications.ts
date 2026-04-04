@@ -1,7 +1,6 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { getAppConfig, getSupabaseFunctionsBaseUrl } from "@/lib/env";
 import type { Mission } from "@/hooks/useMissions";
 
 function currentPermission(): NotificationPermission {
@@ -82,15 +81,14 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 /**
  * Subscribes the browser to Web Push after notification permission is granted.
  * Sends the subscription to the push-subscribe Edge Function.
- *
- * Pass `notificationPermission` so the effect re-fires when permission changes
- * (e.g. user taps "Enable Notifications" on /install while already logged in).
+ * Retries once with a fresh token if the first attempt fails.
  */
 export function usePushSubscription(notificationPermission?: NotificationPermission) {
   const { user, getAccessToken, isAuthenticated } = useAuth();
   const subscribedRef = useRef(false);
   const [subscribed, setSubscribed] = useState(false);
   const perm = notificationPermission ?? currentPermission();
+  const attemptRef = useRef(0);
 
   useEffect(() => {
     if (!isAuthenticated || !user) return;
@@ -102,6 +100,8 @@ export function usePushSubscription(notificationPermission?: NotificationPermiss
     if (!vapidKey) return;
 
     let cancelled = false;
+    attemptRef.current++;
+    const thisAttempt = attemptRef.current;
 
     (async () => {
       try {
@@ -117,22 +117,24 @@ export function usePushSubscription(notificationPermission?: NotificationPermiss
 
         if (cancelled) return;
 
-        const token = await getAccessToken();
-        const res = await fetch(`${getSupabaseFunctionsBaseUrl()}/push-subscribe`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-            apikey: getAppConfig().supabasePublishableKey,
-          },
-          body: JSON.stringify({ subscription: sub.toJSON() }),
-        });
+        const sendSubscription = async (forceRefresh: boolean) => {
+          const token = await getAccessToken(forceRefresh ? { cacheMode: "off" } : {});
+          return supabase.functions.invoke("push-subscribe", {
+            body: { subscription: sub!.toJSON() },
+            headers: { Authorization: `Bearer ${token}` },
+          });
+        };
 
-        if (res.ok) {
+        let { error } = await sendSubscription(false);
+        if (error && thisAttempt === attemptRef.current) {
+          ({ error } = await sendSubscription(true));
+        }
+
+        if (!error && !cancelled) {
           subscribedRef.current = true;
-          if (!cancelled) setSubscribed(true);
-        } else {
-          console.error("push-subscribe failed:", res.status, await res.text());
+          setSubscribed(true);
+        } else if (error) {
+          console.error("push-subscribe failed:", error);
         }
       } catch (e) {
         console.error("Push subscription error:", e);

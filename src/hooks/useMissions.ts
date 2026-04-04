@@ -1,136 +1,179 @@
+/**
+ * Mission hooks — all queries go through the `missions-api` Edge Function
+ * (service-role key) so Auth0 opaque tokens work with Postgres.
+ */
+import type { GetTokenSilentlyOptions } from "@auth0/auth0-spa-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
-import type { Json, Tables } from "@/integrations/supabase/types";
+import type { Tables } from "@/integrations/supabase/types";
 
 export type Mission = Tables<"missions">;
 export type MissionPermission = Tables<"mission_permissions">;
 export type ExecutionLogEntry = Tables<"execution_log">;
 export type ConnectedAccount = Tables<"connected_accounts">;
 
+const TOKEN_TIMEOUT_MS = 20_000;
+const FN_TIMEOUT_MS = 25_000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
+  let tid: ReturnType<typeof setTimeout>;
+  const tp = new Promise<never>((_, rej) => { tid = setTimeout(() => rej(new Error(msg)), ms); });
+  return Promise.race([promise, tp]).finally(() => clearTimeout(tid!));
+}
+
+function isAuthFailure(error: unknown, msg: string): boolean {
+  if (/invalid or expired session|unauthorized/i.test(msg)) return true;
+  if (error instanceof FunctionsHttpError && error.context instanceof Response) {
+    return error.context.status === 401;
+  }
+  return false;
+}
+
+function isLoginRequired(err: unknown): boolean {
+  return err instanceof Error && /login.required|login_required|consent.required/i.test(err.message);
+}
+
+async function callMissionsApi(
+  getAccessToken: (opts?: GetTokenSilentlyOptions) => Promise<string>,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const run = async (force: boolean) => {
+    let token: string;
+    try {
+      token = await withTimeout(
+        getAccessToken(force ? { cacheMode: "off" } : {}),
+        TOKEN_TIMEOUT_MS,
+        "Session expired — try signing out and back in.",
+      );
+    } catch (e) {
+      if (!force && isLoginRequired(e)) {
+        token = await withTimeout(
+          getAccessToken({ cacheMode: "off" }),
+          TOKEN_TIMEOUT_MS,
+          "Session expired — try signing out and back in.",
+        );
+      } else {
+        throw e;
+      }
+    }
+    return supabase.functions.invoke("missions-api", {
+      method: "POST",
+      body,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      timeout: FN_TIMEOUT_MS,
+    });
+  };
+
+  let { data, error } = await run(false);
+  if (error) {
+    const msg = await edgeFunctionErrorMessage(error);
+    if (isAuthFailure(error, msg)) {
+      ({ data, error } = await run(true));
+    }
+    if (error) throw new Error(await edgeFunctionErrorMessage(error));
+  }
+
+  const payload = data as { data?: unknown; error?: string } | null;
+  if (payload && typeof payload.error === "string" && payload.error.trim()) {
+    throw new Error(payload.error);
+  }
+  return payload?.data ?? null;
+}
+
+// ── Hooks ──────────────────────────────────────────────────────────────
+
 export function useMissions(statusFilter?: string) {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   return useQuery({
     queryKey: ["missions", statusFilter],
     queryFn: async () => {
-      let query = supabase
-        .from("missions")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (statusFilter && statusFilter !== "all") {
-        query = query.eq("status", statusFilter);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as Mission[];
+      const data = await callMissionsApi(getAccessToken, { action: "list", statusFilter });
+      return (data ?? []) as Mission[];
     },
     enabled: !!user,
   });
 }
 
 export function useActiveMissions() {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   return useQuery({
     queryKey: ["missions", "active"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("missions")
-        .select("*")
-        .in("status", ["active", "pending"])
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as Mission[];
+      const data = await callMissionsApi(getAccessToken, { action: "list_active" });
+      return (data ?? []) as Mission[];
     },
     enabled: !!user,
   });
 }
 
 export function useMission(id: string | undefined) {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   return useQuery({
     queryKey: ["mission", id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("missions")
-        .select("*")
-        .eq("id", id!)
-        .maybeSingle();
-      if (error) throw error;
-      return data as Mission | null;
+      const data = await callMissionsApi(getAccessToken, { action: "get", id });
+      return (data as Mission) ?? null;
     },
     enabled: !!user && !!id,
   });
 }
 
 export function useMissionPermissions(missionId: string | undefined) {
+  const { getAccessToken } = useAuth();
   return useQuery({
     queryKey: ["mission_permissions", missionId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("mission_permissions")
-        .select("*")
-        .eq("mission_id", missionId!);
-      if (error) throw error;
-      return data as MissionPermission[];
+      const data = await callMissionsApi(getAccessToken, { action: "list_permissions", mission_id: missionId });
+      return (data ?? []) as MissionPermission[];
     },
     enabled: !!missionId,
   });
 }
 
 export function useExecutionLog(missionId?: string) {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   return useQuery({
     queryKey: ["execution_log", missionId],
     queryFn: async () => {
-      let query = supabase
-        .from("execution_log")
-        .select("*")
-        .order("timestamp", { ascending: false })
-        .limit(100);
-
-      if (missionId) {
-        query = query.eq("mission_id", missionId);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      return data as ExecutionLogEntry[];
+      const data = await callMissionsApi(getAccessToken, {
+        action: "list_execution_log",
+        mission_id: missionId,
+        limit: 100,
+      });
+      return (data ?? []) as ExecutionLogEntry[];
     },
     enabled: !!user,
   });
 }
 
 export function useRecentActivity() {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   return useQuery({
     queryKey: ["execution_log", "recent"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("execution_log")
-        .select("*")
-        .order("timestamp", { ascending: false })
-        .limit(20);
-      if (error) throw error;
-      return data as ExecutionLogEntry[];
+      const data = await callMissionsApi(getAccessToken, {
+        action: "list_execution_log",
+        limit: 20,
+      });
+      return (data ?? []) as ExecutionLogEntry[];
     },
     enabled: !!user,
   });
 }
 
 export function useConnectedAccounts() {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   return useQuery({
     queryKey: ["connected_accounts"],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("connected_accounts")
-        .select("id, provider, provider_username, scopes, connected_at, is_active, user_id")
-        .order("connected_at", { ascending: false });
-      if (error) throw error;
-      return data as ConnectedAccount[];
+      const data = await callMissionsApi(getAccessToken, { action: "list_connected_accounts" });
+      return (data ?? []) as ConnectedAccount[];
     },
     enabled: !!user,
   });
@@ -138,7 +181,7 @@ export function useConnectedAccounts() {
 
 export function useCreateMission() {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
+  const { getAccessToken } = useAuth();
 
   return useMutation({
     mutationFn: async (input: {
@@ -150,39 +193,12 @@ export function useCreateMission() {
       permissions?: { provider: string; scope: string; action_type: string; reason?: string }[];
     }) => {
       const { permissions, ...rest } = input;
-
-      const { data: mission, error } = await supabase
-        .from("missions")
-        .insert({
-          objective: rest.objective,
-          time_limit_mins: rest.time_limit_mins,
-          manifest_json: (rest.manifest_json ?? null) as Json,
-          risk_level: rest.risk_level,
-          intent_audit: (rest.intent_audit ?? null) as Json,
-          user_id: user!.id,
-          status: "pending",
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      if (permissions && permissions.length > 0) {
-        const { error: permError } = await supabase
-          .from("mission_permissions")
-          .insert(
-            permissions.map((p) => ({
-              mission_id: mission.id,
-              provider: p.provider,
-              scope: p.scope,
-              action_type: p.action_type,
-              reason: p.reason,
-            }))
-          );
-        if (permError) throw permError;
-      }
-
-      return mission as Mission;
+      const data = await callMissionsApi(getAccessToken, {
+        action: "create",
+        mission: rest,
+        permissions,
+      });
+      return data as Mission;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });
@@ -192,6 +208,7 @@ export function useCreateMission() {
 
 export function useUpdateMissionStatus() {
   const queryClient = useQueryClient();
+  const { getAccessToken } = useAuth();
 
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -199,9 +216,7 @@ export function useUpdateMissionStatus() {
         const { data, error } = await supabase.functions.invoke("mission-approve", {
           body: { mission_id: id },
         });
-        if (error) {
-          throw new Error(await edgeFunctionErrorMessage(error));
-        }
+        if (error) throw new Error(await edgeFunctionErrorMessage(error));
         const payload = data as { error?: string; mission?: Mission; blocked?: boolean };
         if (payload?.error || !payload?.mission) {
           throw new Error(payload?.error || "Approval failed");
@@ -214,14 +229,12 @@ export function useUpdateMissionStatus() {
         updates.completed_at = new Date().toISOString();
       }
 
-      const { data, error } = await supabase
-        .from("missions")
-        .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
-      if (error) throw error;
-      return data as Mission;
+      const result = await callMissionsApi(getAccessToken, {
+        action: "update",
+        id,
+        updates,
+      });
+      return result as Mission;
     },
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });
@@ -234,25 +247,15 @@ export function useUpdateMissionStatus() {
 }
 
 export function useMissionStats() {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   return useQuery({
     queryKey: ["mission_stats"],
     queryFn: async () => {
-      const [missionsRes, logsRes] = await Promise.all([
-        supabase.from("missions").select("id, status", { count: "exact" }),
-        supabase.from("execution_log").select("id, status", { count: "exact" }),
-      ]);
-
-      if (missionsRes.error) throw missionsRes.error;
-      if (logsRes.error) throw logsRes.error;
-
-      const missions = missionsRes.data || [];
-      const logs = logsRes.data || [];
-
-      return {
-        totalMissions: missions.length,
-        actionsApproved: logs.filter((l) => l.status === "allowed").length,
-        actionsBlocked: logs.filter((l) => l.status === "blocked").length,
+      const data = await callMissionsApi(getAccessToken, { action: "mission_stats" });
+      return data as {
+        totalMissions: number;
+        actionsApproved: number;
+        actionsBlocked: number;
       };
     },
     enabled: !!user,

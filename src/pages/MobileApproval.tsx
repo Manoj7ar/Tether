@@ -5,9 +5,11 @@ import TetherLogo from "@/components/layout/TetherLogo";
 import { useAuth } from "@/hooks/useAuth";
 import { useMissionPermissions, useUpdateMissionStatus, type Mission } from "@/hooks/useMissions";
 import { supabase } from "@/integrations/supabase/client";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/error-utils";
+import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 import StepUpVerificationPanel from "@/components/security/StepUpVerificationPanel";
 import { useMissionStepUpGate } from "@/hooks/useStepUp";
 
@@ -18,12 +20,11 @@ interface MissionManifest {
 }
 
 function usePendingMissionForApproval() {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
   const [searchParams] = useSearchParams();
   const missionIdParam = searchParams.get("mission");
   const queryClient = useQueryClient();
 
-  // Subscribe to realtime changes on missions table
   useEffect(() => {
     if (!user) return;
 
@@ -51,28 +52,32 @@ function usePendingMissionForApproval() {
   return useQuery({
     queryKey: ["pending_approval_mission", missionIdParam],
     queryFn: async (): Promise<Mission | null> => {
-      if (missionIdParam) {
-        const { data, error } = await supabase
-          .from("missions")
-          .select("*")
-          .eq("id", missionIdParam)
-          .eq("status", "pending")
-          .maybeSingle();
-        if (error) throw error;
-        return data;
+      const token = await getAccessToken();
+      const { data, error } = await supabase.functions.invoke("missions-api", {
+        body: { action: "get_pending", ...(missionIdParam ? { id: missionIdParam } : {}) },
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (error) {
+        const msg = await edgeFunctionErrorMessage(error);
+        if (error instanceof FunctionsHttpError && error.context instanceof Response && error.context.status === 401) {
+          const freshToken = await getAccessToken({ cacheMode: "off" });
+          const retry = await supabase.functions.invoke("missions-api", {
+            body: { action: "get_pending", ...(missionIdParam ? { id: missionIdParam } : {}) },
+            headers: { Authorization: `Bearer ${freshToken}` },
+          });
+          if (retry.error) throw new Error(await edgeFunctionErrorMessage(retry.error));
+          const rp = retry.data as { data?: Mission; error?: string } | null;
+          if (rp?.error) throw new Error(rp.error);
+          return rp?.data ?? null;
+        }
+        throw new Error(msg);
       }
-
-      const { data, error } = await supabase
-        .from("missions")
-        .select("*")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
+      const payload = data as { data?: Mission; error?: string } | null;
+      if (payload?.error) throw new Error(payload.error);
+      return payload?.data ?? null;
     },
     enabled: !!user,
+    refetchInterval: 5000,
   });
 }
 

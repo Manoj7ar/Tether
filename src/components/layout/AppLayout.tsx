@@ -18,7 +18,6 @@ import { Home, Plus, List, LinkIcon, Shield, Settings } from "lucide-react";
 import { ReactNode } from "react";
 import NotificationBell from "@/components/layout/NotificationBell";
 import { useUserSettings } from "@/hooks/useUserSettings";
-import { useDemoMode } from "@/hooks/useDemoMode";
 
 function getInitialsFromDisplayName(name: string): string {
   const trimmed = name.trim();
@@ -136,17 +135,7 @@ function UserSection() {
 
 
 function DemoModeBanner() {
-  const demo = useDemoMode();
-  if (!demo) return null;
-
-  return (
-    <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-1.5 flex items-center justify-center gap-2 text-xs">
-      <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-      <span className="font-semibold text-amber-700 dark:text-amber-400">
-        Demo Mode — All data is mocked. No real API calls are being made.
-      </span>
-    </div>
-  );
+  return null;
 }
 
 function SessionExpiredBanner() {

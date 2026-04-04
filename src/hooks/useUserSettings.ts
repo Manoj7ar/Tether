@@ -1,3 +1,7 @@
+/**
+ * App preferences and onboarding flags live in Postgres `user_settings`; this hook uses the `user-settings` Edge API only (not direct `from()`).
+ * @see docs/auth-supabase-data.md
+ */
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";

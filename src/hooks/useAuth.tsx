@@ -1,3 +1,8 @@
+/**
+ * Auth0 SPA session + profile. `user.id` is Auth0 `sub` — same id used in Postgres RLS and Edge JWT checks.
+ * Supabase receives this token via `setSupabaseAccessTokenGetter`; do not use Supabase Auth for login.
+ * @see docs/auth-supabase-data.md
+ */
 import {
   Auth0Provider,
   useAuth0,

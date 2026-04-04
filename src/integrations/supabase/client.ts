@@ -1,3 +1,8 @@
+/**
+ * Supabase JS client for Postgres + Realtime + `functions.invoke`.
+ * Access token is the Auth0 JWT (see `setSupabaseAccessTokenGetter` from `useAuth`); this app does not use Supabase Auth.
+ * @see docs/auth-supabase-data.md
+ */
 import { createClient } from "@supabase/supabase-js";
 import { getAppConfig } from "@/lib/env";
 import type { Database } from "./types";

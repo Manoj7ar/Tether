@@ -34,6 +34,7 @@ This project is designed for hackathons such as **[Authorized to Act](https://au
 - [Architecture](#architecture)
 - [Auth0-centric architecture](#auth0-centric-architecture)
 - [Auth0 and Token Vault](#auth0-and-token-vault)
+- [Auth0 vs Supabase (data flow)](#auth0-vs-supabase-data-flow)
 - [Security model](#security-model)
 - [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
@@ -221,6 +222,14 @@ flowchart TB
 - **Connected accounts** (GitHub, Google properties, Slack) use the **`auth0-token-vault`** Edge Function: **authorize** → **callback** → **token exchange** with Auth0, then persistence of **encrypted** material for server-side API execution. Connect and reauth flows support an optional **`returnPath`** so users land back on the same screen after OAuth (e.g. mission detail or mobile approval).
 
 - For hackathon narrative, position Tether as: **Auth0 orchestrates OAuth and consent**; **Tether never exposes tokens to the agent**; **execution is server-side and audited**. Align wording with your actual Auth0 **Token Vault** product usage in the tenant you demo.
+
+---
+
+## Auth0 vs Supabase (data flow)
+
+Tether uses **Auth0 for sign-in and provider OAuth**, and **Supabase for Postgres, Realtime, and Edge Functions**. The SPA does **not** use Supabase Auth: it attaches the **Auth0 access token** to the Supabase client so RLS and functions see the same `sub`.
+
+**Practical guide (when to call what, where settings live, code map):** [`docs/auth-supabase-data.md`](docs/auth-supabase-data.md).
 
 ---
 

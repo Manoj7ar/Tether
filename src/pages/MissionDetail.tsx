@@ -10,7 +10,7 @@ import { useRealtimeExecutionLog } from "@/hooks/useRealtimeExecutionLog";
 import { format } from "date-fns";
 import { toast } from "@/hooks/use-toast";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
-
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Play, FileText, CheckCircle, XCircle, AlertTriangle as TriangleAlert } from "lucide-react";
@@ -54,6 +54,7 @@ export default function MissionDetail() {
   const { liveEntries } = useRealtimeExecutionLog(mission?.id);
   const { data: connectedAccounts = [] } = useConnectedAccounts();
   const { data: userSettings } = useUserSettings();
+  const { getAccessToken } = useAuth();
   const updateStatus = useUpdateMissionStatus();
   const { needsStepUp, satisfied: stepUpSatisfied } = useMissionStepUpGate(mission?.id, permissions);
 
@@ -125,8 +126,10 @@ export default function MissionDetail() {
     if (!mission) return;
     setSimulating(label);
     try {
+      const token = await getAccessToken();
       const { data, error } = await supabase.functions.invoke("agent-action", {
         body: { mission_id: mission.id, action, params },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (error) {
         toast({ title: "Blocked", description: await edgeFunctionErrorMessage(error), variant: "destructive" });
@@ -140,7 +143,7 @@ export default function MissionDetail() {
     } finally {
       setSimulating(null);
     }
-  }, [mission]);
+  }, [mission, getAccessToken]);
 
   const simulateCompromised = useCallback(async () => {
     if (!mission) return;

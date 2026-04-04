@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { getErrorMessage } from "@/lib/error-utils";
 import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
@@ -200,6 +201,7 @@ function RuleCard({
 }
 
 export default function PolicyEngine() {
+  const { getAccessToken } = useAuth();
   const { data, isLoading } = usePolicyRules();
   const saveMutation = useSavePolicyRules();
   const { data: logs } = useExecutionLog();
@@ -263,8 +265,10 @@ export default function PolicyEngine() {
     setNlGenerating(true);
     setNlResult(null);
     try {
+      const token = await getAccessToken();
       const { data: result, error } = await supabase.functions.invoke("generate-policy", {
         body: { description: nlInput },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (error) throw new Error(await edgeFunctionErrorMessage(error));
       if (result?.error) throw new Error(result.error);

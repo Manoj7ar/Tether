@@ -5,6 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import MissionManifestCard from "@/components/mission/MissionManifestCard";
 import { useCreateMission } from "@/hooks/useMissions";
 import { useUserSettings } from "@/hooks/useUserSettings";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import MissionTemplates, { MissionTemplate } from "@/components/mission/MissionTemplates";
@@ -34,6 +35,7 @@ export default function NewMission() {
   const navigate = useNavigate();
   const location = useLocation();
   const createMission = useCreateMission();
+  const { getAccessToken } = useAuth();
   const { data: settings } = useUserSettings();
   const isDemoMode = settings?.demo_mode ?? false;
 
@@ -47,11 +49,24 @@ export default function NewMission() {
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-manifest", {
-        body: { task, timeLimitMins: timeLimit },
-      });
+      const invokeWithToken = async (token: string) => {
+        return supabase.functions.invoke("generate-manifest", {
+          body: { task, timeLimitMins: timeLimit },
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      };
 
-      if (error) throw new Error(await edgeFunctionErrorMessage(error));
+      let token = await getAccessToken();
+      let { data, error } = await invokeWithToken(token);
+
+      if (error) {
+        const msg = await edgeFunctionErrorMessage(error);
+        if (/unauthorized|invalid.*session|failed to send/i.test(msg)) {
+          token = await getAccessToken({ cacheMode: "off" });
+          ({ data, error } = await invokeWithToken(token));
+        }
+        if (error) throw new Error(await edgeFunctionErrorMessage(error));
+      }
       if (data?.error) throw new Error(data.error);
 
       setManifest(data.manifest as ManifestData);

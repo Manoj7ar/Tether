@@ -9,13 +9,15 @@ export interface Nudge {
 }
 
 export function useNudges() {
-  const { user } = useAuth();
+  const { user, getAccessToken } = useAuth();
 
   const query = useQuery({
     queryKey: ["nudges", user?.id],
     queryFn: async (): Promise<{ nudges: Nudge[]; dismissedIds: string[] }> => {
-      // Try to fetch from edge function (will return cached if fresh)
-      const { data, error } = await supabase.functions.invoke("generate-nudges");
+      const token = await getAccessToken();
+      const { data, error } = await supabase.functions.invoke("generate-nudges", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
       if (error) {
         console.error("Nudge fetch error:", error);

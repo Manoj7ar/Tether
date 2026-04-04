@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import authLoginBg from "@/assets/auth-nature.jpg";
 import authSignupBg from "@/assets/auth-signup-nature.jpg";
@@ -10,9 +10,18 @@ import { getErrorMessage } from "@/lib/error-utils";
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  const { isAuthenticated, login, user } = useAuth();
+  const { isAuthenticated, loading: authLoading, login, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const state = location.state as { returnTo?: string } | null;
+
+  useEffect(() => {
+    if (authLoading || !isAuthenticated || !user?.sub) return;
+    const t = window.setTimeout(() => {
+      navigate(state?.returnTo ?? "/dashboard", { replace: true });
+    }, 400);
+    return () => window.clearTimeout(t);
+  }, [authLoading, isAuthenticated, user?.sub, navigate, state?.returnTo]);
 
   const handleAuth = async (screenHint?: "signup") => {
     setLoading(true);

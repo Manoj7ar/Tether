@@ -227,7 +227,17 @@ function Auth0ProviderWithRouter({ children }: { children: ReactNode }) {
       clientId={config.auth0ClientId}
       domain={config.auth0Domain}
       onRedirectCallback={(appState?: AppState) => {
-        navigate(appState?.returnTo || location.pathname || "/dashboard", { replace: true });
+        const returnTo = appState?.returnTo;
+        if (returnTo && returnTo !== "/auth") {
+          navigate(returnTo, { replace: true });
+          return;
+        }
+        const path = location.pathname;
+        if (path && path !== "/auth" && path !== "/") {
+          navigate(path, { replace: true });
+          return;
+        }
+        navigate("/dashboard", { replace: true });
       }}
       useRefreshTokens={hasAudience}
     >

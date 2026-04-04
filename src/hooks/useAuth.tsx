@@ -158,15 +158,31 @@ function AuthBridge({
   const getTokenRef = useRef(getAccessTokenSilently);
   getTokenRef.current = getAccessTokenSilently;
 
-  // Resilient token getter: if the normal call throws login_required, retry with cache off
-  // before giving up. This prevents a single silent-refresh failure from nuking the session.
+  const loginRedirectRef = useRef(loginWithRedirect);
+  loginRedirectRef.current = loginWithRedirect;
+
+  // Resilient token getter: retries with cache off on login_required. If both
+  // attempts fail, triggers a redirect login instead of showing a confusing error.
   const resilientGetToken = useCallback(async (options?: GetTokenSilentlyOptions): Promise<string> => {
     try {
       return await getTokenRef.current(options ?? {});
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      if (/login.required|login_required|consent.required/i.test(msg) && !options?.cacheMode) {
-        return getTokenRef.current({ cacheMode: "off" });
+      const isLoginErr = /login.required|login_required|consent.required/i.test(msg);
+
+      if (isLoginErr && !options?.cacheMode) {
+        try {
+          return await getTokenRef.current({ cacheMode: "off" });
+        } catch (retryErr) {
+          const retryMsg = retryErr instanceof Error ? retryErr.message : "";
+          if (/login.required|login_required|consent.required/i.test(retryMsg)) {
+            loginRedirectRef.current({
+              appState: { returnTo: window.location.pathname + window.location.search },
+            });
+            return new Promise(() => {});
+          }
+          throw retryErr;
+        }
       }
       throw err;
     }
@@ -258,16 +274,13 @@ function Auth0ProviderWithRouter({ children }: { children: ReactNode }) {
   const location = useLocation();
 
   const hasAudience = Boolean(config.auth0Audience);
-  const scope = hasAudience
-    ? config.auth0Scope
-    : config.auth0Scope?.replace(/\boffline_access\b/g, "").replace(/\s+/g, " ").trim();
 
   return (
     <Auth0Provider
       authorizationParams={{
         ...(hasAudience ? { audience: config.auth0Audience } : {}),
         redirect_uri: window.location.origin,
-        ...(scope ? { scope } : {}),
+        ...(config.auth0Scope ? { scope: config.auth0Scope } : {}),
       }}
       cacheLocation="localstorage"
       clientId={config.auth0ClientId}
@@ -285,7 +298,8 @@ function Auth0ProviderWithRouter({ children }: { children: ReactNode }) {
         }
         navigate("/dashboard", { replace: true });
       }}
-      useRefreshTokens={hasAudience}
+      useRefreshTokens
+      useRefreshTokensFallback
     >
       <AuthBridge config={config}>{children}</AuthBridge>
     </Auth0Provider>

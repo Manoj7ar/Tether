@@ -1,28 +1,13 @@
 /**
  * Missions CRUD Edge Function.
  *
- * Handles all mission-related database operations server-side using the
- * service role key, so Auth0 opaque tokens (no audience) work correctly.
- * The client sends the Auth0 token; we validate it via requireAuth0User
- * and scope all queries to that user's ID.
- *
- * Routes (via JSON body `action` field):
- *   POST { action: "list", statusFilter? }         → list missions
- *   POST { action: "get", id }                     → single mission
- *   POST { action: "create", mission, permissions? }→ insert mission + permissions
- *   POST { action: "update", id, updates }         → update mission fields
- *   POST { action: "list_permissions", mission_id } → list permissions for a mission
- *   POST { action: "list_execution_log", mission_id?, limit? } → execution log
- *   POST { action: "insert_execution_log", entry }  → insert log entry
- *   POST { action: "list_connected_accounts" }      → connected accounts
- *   POST { action: "mission_stats" }                → aggregated stats
+ * Uses a lightweight auth approach (Auth0 /userinfo) to avoid importing
+ * the heavy jose library, keeping memory usage low.
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { AuthError, requireAuth0User } from "../_shared/auth.ts";
-import { requireEnv } from "../_shared/env.ts";
 
-const corsHeaders: Record<string, string> = {
+const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
@@ -32,35 +17,60 @@ const corsHeaders: Record<string, string> = {
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
+    headers: { ...CORS, "Content-Type": "application/json" },
   });
+}
+
+function env(name: string): string {
+  const v = Deno.env.get(name);
+  if (!v) throw Object.assign(new Error(`${name} not configured`), { status: 503 });
+  return v;
+}
+
+async function authenticateRequest(req: Request): Promise<string> {
+  const hdr = req.headers.get("Authorization");
+  if (!hdr?.startsWith("Bearer ")) {
+    throw Object.assign(new Error("Unauthorized"), { status: 401 });
+  }
+
+  const token = hdr.slice(7);
+  const domain = env("AUTH0_DOMAIN").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+
+  const res = await fetch(`https://${domain}/userinfo`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw Object.assign(new Error("Invalid or expired session"), { status: 401 });
+  }
+
+  const profile = await res.json();
+  if (!profile.sub) {
+    throw Object.assign(new Error("Auth0 did not return a user ID"), { status: 401 });
+  }
+
+  return profile.sub as string;
 }
 
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: CORS });
   }
 
   try {
-    const { userId } = await requireAuth0User(req);
-    const db = createClient(
-      requireEnv("SUPABASE_URL"),
-      requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-    );
+    const userId = await authenticateRequest(req);
+    const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
 
     const rawText = await req.text();
     let body: Record<string, unknown>;
     try {
       body = JSON.parse(rawText);
     } catch {
-      console.error("missions-api: failed to parse body:", rawText.slice(0, 200));
       return json({ error: "Invalid request body" }, 400);
     }
-    const action: string = body.action as string;
-    console.log("missions-api:", action, "userId:", userId);
+    const action = body.action as string;
 
     switch (action) {
-      // ── List missions ───────────────────────────────────────────────
       case "list": {
         let q = db
           .from("missions")
@@ -75,7 +85,6 @@ serve(async (req: Request) => {
         return json({ data });
       }
 
-      // ── List active/pending missions ────────────────────────────────
       case "list_active": {
         const { data, error } = await db
           .from("missions")
@@ -87,7 +96,6 @@ serve(async (req: Request) => {
         return json({ data });
       }
 
-      // ── Get single mission ──────────────────────────────────────────
       case "get": {
         const { data, error } = await db
           .from("missions")
@@ -99,9 +107,8 @@ serve(async (req: Request) => {
         return json({ data });
       }
 
-      // ── Create mission + permissions ────────────────────────────────
       case "create": {
-        const m = body.mission;
+        const m = body.mission as Record<string, unknown>;
         const { data: mission, error } = await db
           .from("missions")
           .insert({
@@ -118,46 +125,42 @@ serve(async (req: Request) => {
         if (error) throw error;
 
         if (Array.isArray(body.permissions) && body.permissions.length > 0) {
+          const perms = body.permissions as { provider: string; scope: string; action_type: string; reason?: string }[];
           const { error: permErr } = await db
             .from("mission_permissions")
-            .insert(
-              body.permissions.map((p: { provider: string; scope: string; action_type: string; reason?: string }) => ({
-                mission_id: mission.id,
-                provider: p.provider,
-                scope: p.scope,
-                action_type: p.action_type,
-                reason: p.reason ?? null,
-              })),
-            );
+            .insert(perms.map((p) => ({
+              mission_id: mission.id,
+              provider: p.provider,
+              scope: p.scope,
+              action_type: p.action_type,
+              reason: p.reason ?? null,
+            })));
           if (permErr) throw permErr;
         }
 
-        // Fire-and-forget push notification to user's devices
         const tetherNum = String(mission.tether_number).padStart(3, "0");
-        const pushUrl = `${requireEnv("SUPABASE_URL")}/functions/v1/send-push`;
-        const svcKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+        const pushUrl = `${env("SUPABASE_URL")}/functions/v1/send-push`;
         fetch(pushUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${svcKey}`,
+            Authorization: `Bearer ${env("SUPABASE_SERVICE_ROLE_KEY")}`,
           },
           body: JSON.stringify({
             user_id: userId,
             mission_id: mission.id,
             title: `Tether #${tetherNum} — Approval Required`,
-            body: (mission.objective ?? "A new mission needs your approval.").slice(0, 120),
+            body: ((mission.objective as string) ?? "A new mission needs your approval.").slice(0, 120),
           }),
         }).catch((e: unknown) => console.error("send-push fire-and-forget failed:", e));
 
         return json({ data: mission });
       }
 
-      // ── Update mission ──────────────────────────────────────────────
       case "update": {
         const { data, error } = await db
           .from("missions")
-          .update(body.updates)
+          .update(body.updates as Record<string, unknown>)
           .eq("id", body.id)
           .eq("user_id", userId)
           .select()
@@ -166,7 +169,6 @@ serve(async (req: Request) => {
         return json({ data });
       }
 
-      // ── Get pending mission for mobile approval ─────────────────────
       case "get_pending": {
         if (body.id) {
           const { data, error } = await db
@@ -191,7 +193,6 @@ serve(async (req: Request) => {
         return json({ data });
       }
 
-      // ── List mission permissions ────────────────────────────────────
       case "list_permissions": {
         const { data, error } = await db
           .from("mission_permissions")
@@ -201,14 +202,13 @@ serve(async (req: Request) => {
         return json({ data });
       }
 
-      // ── Execution log ───────────────────────────────────────────────
       case "list_execution_log": {
         let q = db
           .from("execution_log")
           .select("*")
           .eq("user_id", userId)
           .order("timestamp", { ascending: false })
-          .limit(body.limit ?? 100);
+          .limit((body.limit as number) ?? 100);
         if (body.mission_id) {
           q = q.eq("mission_id", body.mission_id);
         }
@@ -217,9 +217,8 @@ serve(async (req: Request) => {
         return json({ data });
       }
 
-      // ── Insert execution log entry ──────────────────────────────────
       case "insert_execution_log": {
-        const entry = body.entry;
+        const entry = body.entry as Record<string, unknown>;
         const { data, error } = await db
           .from("execution_log")
           .insert({ ...entry, user_id: userId })
@@ -229,7 +228,6 @@ serve(async (req: Request) => {
         return json({ data });
       }
 
-      // ── Connected accounts ──────────────────────────────────────────
       case "list_connected_accounts": {
         const { data, error } = await db
           .from("connected_accounts")
@@ -240,17 +238,15 @@ serve(async (req: Request) => {
         return json({ data });
       }
 
-      // ── Mission stats ───────────────────────────────────────────────
       case "mission_stats": {
-        const [missionsRes, logsRes] = await Promise.all([
+        const [mRes, lRes] = await Promise.all([
           db.from("missions").select("id, status").eq("user_id", userId),
           db.from("execution_log").select("id, status").eq("user_id", userId),
         ]);
-        if (missionsRes.error) throw missionsRes.error;
-        if (logsRes.error) throw logsRes.error;
-
-        const missions = missionsRes.data ?? [];
-        const logs = logsRes.data ?? [];
+        if (mRes.error) throw mRes.error;
+        if (lRes.error) throw lRes.error;
+        const missions = mRes.data ?? [];
+        const logs = lRes.data ?? [];
         return json({
           data: {
             totalMissions: missions.length,
@@ -260,7 +256,6 @@ serve(async (req: Request) => {
         });
       }
 
-      // ── Analytics (missions + logs for charts) ───────────────────────
       case "analytics": {
         const [mRes, lRes] = await Promise.all([
           db.from("missions").select("id, status, risk_level, created_at").eq("user_id", userId),
@@ -275,12 +270,10 @@ serve(async (req: Request) => {
         return json({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (err) {
-    const errMsg =
-      err instanceof Error ? err.message :
-      typeof err === "object" && err !== null && "message" in err ? String((err as { message: unknown }).message) :
-      JSON.stringify(err);
-    console.error("missions-api error:", errMsg, err);
-    const status = err instanceof AuthError ? err.status : 500;
-    return json({ error: errMsg || "Internal error" }, status);
+    const errObj = err as { message?: string; status?: number };
+    const message = errObj.message || "Internal error";
+    const status = errObj.status ?? 500;
+    if (status >= 500) console.error("missions-api error:", message);
+    return json({ error: message }, status);
   }
 });

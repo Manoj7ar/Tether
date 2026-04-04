@@ -234,10 +234,34 @@ export function useUpdateMissionStatus() {
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
       if (status === "active") {
-        const { data, error } = await supabase.functions.invoke("mission-approve", {
-          body: { mission_id: id },
-        });
-        if (error) throw new Error(await edgeFunctionErrorMessage(error));
+        let token: string;
+        try {
+          token = await withTimeout(getAccessToken(), TOKEN_TIMEOUT_MS, "Session expired.");
+        } catch (e) {
+          if (isLoginRequired(e)) {
+            token = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
+          } else { throw e; }
+        }
+
+        const doApprove = async (t: string) => {
+          const { data, error } = await supabase.functions.invoke("mission-approve", {
+            body: { mission_id: id },
+            headers: { Authorization: `Bearer ${t}` },
+          });
+          return { data, error };
+        };
+
+        let { data, error } = await doApprove(token);
+
+        if (error) {
+          const msg = await edgeFunctionErrorMessage(error);
+          if (/unauthorized|invalid.*session/i.test(msg)) {
+            const fresh = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
+            ({ data, error } = await doApprove(fresh));
+          }
+          if (error) throw new Error(await edgeFunctionErrorMessage(error));
+        }
+
         const payload = data as { error?: string; mission?: Mission; blocked?: boolean };
         if (payload?.error || !payload?.mission) {
           throw new Error(payload?.error || "Approval failed");

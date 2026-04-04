@@ -140,26 +140,19 @@ function AuthBridge({
     logout,
     user: auth0User,
   } = useAuth0();
-  const user = useMemo(() => mapAuth0User(auth0User), [auth0User]);
 
-  // Track whether we were ever authenticated in this browser tab.
-  // Auth0 can flip isAuthenticated to false during silent token renewal (ITP, popup blockers, etc.)
-  // and we must NOT treat that as "logged out" — it's a transient state.
-  const [wasAuthenticated, setWasAuthenticated] = useState(false);
-  if (rawIsAuthenticated && !wasAuthenticated) {
-    setWasAuthenticated(true);
+  const freshUser = useMemo(() => mapAuth0User(auth0User), [auth0User]);
+
+  // Cache the last known good user so transient Auth0 drops don't null out queries
+  const lastGoodUserRef = useRef<AuthUser | null>(null);
+  if (freshUser) {
+    lastGoodUserRef.current = freshUser;
   }
 
-  // If Auth0 SDK says loading is done but isAuthenticated is false while
-  // we were previously authed, keep reporting "loading" to prevent route guards from
-  // kicking the user to /auth. Only clear once we detect a real logout (explicit signOut)
-  // or an unrecoverable Auth0 error.
   const isRealLogout = useRef(false);
 
-  const isTransientDrop = !rawIsLoading && !rawIsAuthenticated && wasAuthenticated && !isRealLogout.current;
-
-  const isAuthenticated = rawIsAuthenticated || isTransientDrop;
-  const isLoading = rawIsLoading || isTransientDrop;
+  // During transient drops, serve the cached user; only null on real logout
+  const user = freshUser ?? (isRealLogout.current ? null : lastGoodUserRef.current);
 
   // Keep a stable ref so the Supabase getter always calls the latest SDK function.
   const getTokenRef = useRef(getAccessTokenSilently);
@@ -179,11 +172,16 @@ function AuthBridge({
     }
   }, []);
 
+  // Derive stable isAuthenticated / loading:
+  // - If we have a cached user and Auth0 hasn't explicitly errored, we're still authed
+  // - loading is only true during the initial SDK load, NOT during transient drops
+  const isAuthenticated = rawIsAuthenticated || (!!user && !isRealLogout.current);
+  const isLoading = rawIsLoading && !user;
+
   // Always keep the Supabase JWT getter registered while we consider the user authenticated.
-  // Only null it out on real logout or unmount.
   useLayoutEffect(() => {
     if (isAuthenticated) {
-      setSupabaseAccessTokenGetter(() => resilientGetToken());
+      setSupabaseAccessTokenGetter(async () => resilientGetToken());
     } else if (!rawIsLoading) {
       setSupabaseAccessTokenGetter(null);
     }
@@ -193,8 +191,6 @@ function AuthBridge({
     return () => setSupabaseAccessTokenGetter(null);
   }, []);
 
-  // If Auth0 gives us an actual error (not just transient), log it but don't auto-redirect.
-  // The user can click "Continue with Auth0" on the auth page to resolve it.
   if (auth0Error) {
     console.warn("[Tether AuthBridge] Auth0 error:", auth0Error.message);
   }
@@ -233,7 +229,7 @@ function AuthBridge({
     },
     signOut: async () => {
       isRealLogout.current = true;
-      setWasAuthenticated(false);
+      lastGoodUserRef.current = null;
       await logout({
         logoutParams: {
           returnTo: window.location.origin,

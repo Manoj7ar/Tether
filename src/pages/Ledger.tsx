@@ -4,6 +4,8 @@ import { useMissions, useMissionStats, type ExecutionLogEntry } from "@/hooks/us
 import { useState, useCallback } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { DEMO_MISSIONS, DEMO_EXECUTION_LOGS } from "@/lib/demo-data";
 import { toast } from "@/hooks/use-toast";
 import MissionReplay from "@/components/mission/MissionReplay";
 import { getErrorMessage } from "@/lib/error-utils";
@@ -25,45 +27,55 @@ export default function Ledger() {
   const { data: stats } = useMissionStats();
   const [exporting, setExporting] = useState(false);
   const [replayMission, setReplayMission] = useState<{ id: string; tether_number: number } | null>(null);
+  const demo = useDemoMode();
 
   const handleExport = useCallback(async () => {
     setExporting(true);
     try {
-      const { data: allMissions, error: mErr } = await supabase
-        .from("missions")
-        .select("*")
-        .order("created_at", { ascending: false });
+      let allMissions: Record<string, unknown>[];
+      let allLogs: ExecutionLogEntry[];
 
-      if (mErr) throw mErr;
+      if (demo) {
+        allMissions = DEMO_MISSIONS as unknown as Record<string, unknown>[];
+        allLogs = DEMO_EXECUTION_LOGS as unknown as ExecutionLogEntry[];
+      } else {
+        const { data: mData, error: mErr } = await supabase
+          .from("missions")
+          .select("*")
+          .order("created_at", { ascending: false });
+        if (mErr) throw mErr;
 
-      const { data: allLogs, error: lErr } = await supabase
-        .from("execution_log")
-        .select("*")
-        .order("timestamp", { ascending: true });
+        const { data: lData, error: lErr } = await supabase
+          .from("execution_log")
+          .select("*")
+          .order("timestamp", { ascending: true });
+        if (lErr) throw lErr;
 
-      if (lErr) throw lErr;
+        allMissions = (mData || []) as Record<string, unknown>[];
+        allLogs = (lData || []) as ExecutionLogEntry[];
+      }
 
       const logsByMission: Record<string, ExecutionLogEntry[]> = {};
-      for (const log of (allLogs || [])) {
+      for (const log of allLogs) {
         if (!logsByMission[log.mission_id]) logsByMission[log.mission_id] = [];
         logsByMission[log.mission_id].push(log);
       }
 
-      const totalBlocked = (allLogs || []).filter((l) => l.status === "blocked").length;
+      const totalBlocked = allLogs.filter((l) => l.status === "blocked").length;
 
       const exportData = {
         exported_at: new Date().toISOString(),
-        total_missions: (allMissions || []).length,
-        total_actions: (allLogs || []).length,
+        total_missions: allMissions.length,
+        total_actions: allLogs.length,
         total_blocked: totalBlocked,
-        missions: (allMissions || []).map((m) => ({
+        missions: allMissions.map((m) => ({
           tether_number: m.tether_number,
           objective: m.objective,
           status: m.status,
           created_at: m.created_at,
           approved_at: m.approved_at,
           risk_level: m.risk_level,
-          execution_log: logsByMission[m.id] || [],
+          execution_log: logsByMission[(m as { id: string }).id] || [],
         })),
       };
 
@@ -78,13 +90,13 @@ export default function Ledger() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      toast({ title: "Export complete", description: `Downloaded ${(allMissions || []).length} missions.` });
+      toast({ title: "Export complete", description: `Downloaded ${allMissions.length} missions.` });
     } catch (error: unknown) {
       toast({ title: "Export failed", description: getErrorMessage(error), variant: "destructive" });
     } finally {
       setExporting(false);
     }
-  }, []);
+  }, [demo]);
 
   const statCards = [
     { label: "Total Missions", value: String(stats?.totalMissions ?? 0), color: "text-foreground" },

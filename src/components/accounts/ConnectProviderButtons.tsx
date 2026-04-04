@@ -1,6 +1,7 @@
-import { Github, Mail, Calendar, MessageSquare, Link2, Loader2, Plus } from "lucide-react";
+import { Github, Mail, Calendar, MessageSquare, Link2, Loader2, Plus, Check } from "lucide-react";
 import { useConnectedAccounts } from "@/hooks/useMissions";
 import { useConnectProvider } from "@/hooks/useTokenVault";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 export const providerIcons: Record<string, React.ReactNode> = {
   GitHub: <Github className="h-4 w-4 text-foreground" />,
@@ -24,9 +25,30 @@ export default function ConnectProviderButtons({
 }: ConnectProviderButtonsProps) {
   const { data: accounts = [] } = useConnectedAccounts();
   const connectProvider = useConnectProvider();
+  const demo = useDemoMode();
 
   const connectedProviders = new Set(accounts.map((a) => a.provider));
   const unconnectedProviders = AVAILABLE_CONNECT_PROVIDERS.filter((p) => !connectedProviders.has(p));
+
+  if (demo) {
+    const connectedBtnClass = compact
+      ? "inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-primary/30 bg-primary/5 text-xs font-medium text-foreground"
+      : "inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-primary/30 bg-primary/5 text-sm font-medium text-foreground";
+    return (
+      <div className="space-y-2">
+        <p className="text-sm font-medium text-muted-foreground">Connected providers (demo)</p>
+        <div className="flex gap-2 flex-wrap">
+          {AVAILABLE_CONNECT_PROVIDERS.map((provider) => (
+            <span key={provider} className={connectedBtnClass}>
+              <span>{providerIcons[provider] || <Link2 className="h-4 w-4 text-foreground" />}</span>
+              <span>{provider}</span>
+              <Check className="h-3.5 w-3.5 text-primary" />
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   if (unconnectedProviders.length === 0) {
     return (

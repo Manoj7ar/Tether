@@ -2,6 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { DEMO_NOTIFICATIONS } from "@/lib/demo-data";
 import { toast } from "sonner";
 
 export interface Notification {
@@ -18,10 +20,12 @@ export interface Notification {
 export function useNotificationsInApp() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const demo = useDemoMode();
 
   const query = useQuery({
-    queryKey: ["notifications"],
+    queryKey: ["notifications", demo],
     queryFn: async () => {
+      if (demo) return DEMO_NOTIFICATIONS as unknown as Notification[];
       const { data, error } = await supabase
         .from("notifications")
         .select("*")
@@ -35,9 +39,8 @@ export function useNotificationsInApp() {
 
   const unreadCount = (query.data ?? []).filter((n) => !n.read).length;
 
-  // Realtime subscription
   useEffect(() => {
-    if (!user) return;
+    if (!user || demo) return;
 
     const channel = supabase
       .channel("notifications-realtime")
@@ -57,10 +60,11 @@ export function useNotificationsInApp() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user, queryClient]);
+  }, [user, queryClient, demo]);
 
   const markAsRead = useMutation({
     mutationFn: async (id: string) => {
+      if (demo) return;
       const { error } = await supabase
         .from("notifications")
         .update({ read: true })
@@ -72,6 +76,7 @@ export function useNotificationsInApp() {
 
   const markAllRead = useMutation({
     mutationFn: async () => {
+      if (demo) return;
       const { error } = await supabase
         .from("notifications")
         .update({ read: true })

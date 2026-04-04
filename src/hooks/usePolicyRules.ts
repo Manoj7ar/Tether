@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { DEMO_POLICY_RULES } from "@/lib/demo-data";
 import type { Json } from "@/integrations/supabase/types";
 
 export interface PolicyRule {
@@ -19,9 +21,11 @@ export interface PolicyRulesRow {
 
 export function usePolicyRules() {
   const { user } = useAuth();
+  const demo = useDemoMode();
   return useQuery({
-    queryKey: ["policy_rules"],
+    queryKey: ["policy_rules", demo],
     queryFn: async () => {
+      if (demo) return DEMO_POLICY_RULES as { id: string | null; rules: PolicyRule[] };
       const { data, error } = await supabase
         .from("policy_rules")
         .select("*")
@@ -39,9 +43,11 @@ export function usePolicyRules() {
 export function useSavePolicyRules() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const demo = useDemoMode();
 
   return useMutation({
     mutationFn: async ({ existingId, rules }: { existingId: string | null; rules: PolicyRule[] }) => {
+      if (demo) return;
       if (existingId) {
         const { error } = await supabase
           .from("policy_rules")

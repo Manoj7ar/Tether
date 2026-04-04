@@ -1,16 +1,19 @@
 import { useState, useEffect } from "react";
-import { Sparkles, Shield } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
+import SwipeToConfirm from "@/components/ui/SwipeToConfirm";
 import MissionManifestCard from "@/components/mission/MissionManifestCard";
-import { useCreateMission } from "@/hooks/useMissions";
-import { useUserSettings } from "@/hooks/useUserSettings";
+import { useCreateMission, useUpdateMissionStatus } from "@/hooks/useMissions";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import { toast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { callEdgeFn } from "@/lib/edge-call";
+import { buildDemoManifest } from "@/lib/demo-data";
 import MissionTemplates, { MissionTemplate } from "@/components/mission/MissionTemplates";
 import { getErrorMessage } from "@/lib/error-utils";
-import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
+import StepUpVerificationPanel from "@/components/security/StepUpVerificationPanel";
+import type { MissionPermission } from "@/hooks/useMissions";
 
 interface ManifestData {
   tetherNumber: string;
@@ -32,12 +35,15 @@ export default function NewMission() {
   const [timeLimit, setTimeLimit] = useState(30);
   const [manifest, setManifest] = useState<ManifestData | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [launching, setLaunching] = useState(false);
+  const [stepUpMissionId, setStepUpMissionId] = useState<string | null>(null);
+  const [stepUpPermissions, setStepUpPermissions] = useState<MissionPermission[]>([]);
   const navigate = useNavigate();
   const location = useLocation();
   const createMission = useCreateMission();
+  const updateStatus = useUpdateMissionStatus();
   const { getAccessToken } = useAuth();
-  const { data: settings } = useUserSettings();
-  const isDemoMode = settings?.demo_mode ?? false;
+  const isDemoMode = useDemoMode();
 
   // Pre-fill from navigation state (Quick Launch on Dashboard)
   useEffect(() => {
@@ -49,27 +55,16 @@ export default function NewMission() {
   const handleGenerate = async () => {
     setGenerating(true);
     try {
-      const invokeWithToken = async (token: string) => {
-        return supabase.functions.invoke("generate-manifest", {
+      if (isDemoMode) {
+        const demo = buildDemoManifest(task, timeLimit);
+        setManifest(demo.manifest as ManifestData);
+      } else {
+        const data = await callEdgeFn(getAccessToken, {
+          functionName: "generate-manifest",
           body: { task, timeLimitMins: timeLimit },
-          headers: { Authorization: `Bearer ${token}` },
         });
-      };
-
-      let token = await getAccessToken();
-      let { data, error } = await invokeWithToken(token);
-
-      if (error) {
-        const msg = await edgeFunctionErrorMessage(error);
-        if (/unauthorized|invalid.*session|failed to send/i.test(msg)) {
-          token = await getAccessToken({ cacheMode: "off" });
-          ({ data, error } = await invokeWithToken(token));
-        }
-        if (error) throw new Error(await edgeFunctionErrorMessage(error));
+        setManifest((data as { manifest: ManifestData }).manifest);
       }
-      if (data?.error) throw new Error(data.error);
-
-      setManifest(data.manifest as ManifestData);
     } catch (error: unknown) {
       toast({ title: "Failed to generate manifest", description: getErrorMessage(error), variant: "destructive" });
     } finally {
@@ -77,35 +72,36 @@ export default function NewMission() {
     }
   };
 
-  const handleRequestApproval = async () => {
+  const handleLaunchMission = async () => {
     if (!manifest) return;
-
-    if (isDemoMode) {
-      const fakeId = crypto.randomUUID();
-      const fakeTetherNum = String(Math.floor(Math.random() * 900) + 100);
-      const fakeMission = {
-        id: fakeId,
-        tether_number: Number(fakeTetherNum),
-        objective: manifest.objective,
-        status: "pending" as const,
-        time_limit_mins: timeLimit,
-        risk_level: manifest.riskLevel,
-        manifest_json: manifest as unknown as Record<string, unknown>,
-        created_at: new Date().toISOString(),
-        user_id: "demo",
-      };
-
-      sessionStorage.setItem(`demo_mission_${fakeId}`, JSON.stringify(fakeMission));
-
-      toast({
-        title: "Mission created",
-        description: `Tether #${fakeTetherNum} is pending approval.`,
-      });
-      navigate(`/mission/${fakeId}`);
-      return;
-    }
+    setLaunching(true);
+    setStepUpMissionId(null);
 
     try {
+      if (isDemoMode) {
+        const fakeId = crypto.randomUUID();
+        const fakeTetherNum = String(Math.floor(Math.random() * 900) + 100);
+        const now = new Date();
+        const fakeMission = {
+          id: fakeId,
+          tether_number: Number(fakeTetherNum),
+          objective: manifest.objective,
+          status: "active" as const,
+          time_limit_mins: timeLimit,
+          risk_level: manifest.riskLevel,
+          manifest_json: manifest as unknown as Record<string, unknown>,
+          created_at: now.toISOString(),
+          approved_at: now.toISOString(),
+          expires_at: new Date(now.getTime() + timeLimit * 60000).toISOString(),
+          user_id: "demo",
+        };
+
+        sessionStorage.setItem(`demo_mission_${fakeId}`, JSON.stringify(fakeMission));
+        toast({ title: "Mission launched", description: `Tether #${fakeTetherNum} is now active.` });
+        navigate(`/mission/${fakeId}`);
+        return;
+      }
+
       const mission = await createMission.mutateAsync({
         objective: manifest.objective,
         time_limit_mins: timeLimit,
@@ -119,10 +115,50 @@ export default function NewMission() {
         })),
       });
 
-      toast({ title: "Mission created", description: `Tether #${String(mission.tether_number).padStart(3, "0")} is pending approval.` });
+      try {
+        await updateStatus.mutateAsync({ id: mission.id, status: "active" });
+      } catch (approveErr: unknown) {
+        const msg = getErrorMessage(approveErr);
+        if (/step.up.required|step_up_required/i.test(msg)) {
+          setStepUpMissionId(mission.id);
+          setStepUpPermissions(
+            manifest.permissions.map((p, i) => ({
+              id: `perm-${i}`,
+              mission_id: mission.id,
+              provider: p.provider,
+              scope: p.scope,
+              action_type: p.actionType,
+              reason: null,
+              created_at: new Date().toISOString(),
+            })) as MissionPermission[],
+          );
+          toast({ title: "Step-up required", description: "Re-authenticate with the provider, then swipe again to launch." });
+          return;
+        }
+        throw approveErr;
+      }
+
+      const num = String(mission.tether_number).padStart(3, "0");
+      toast({ title: "Mission launched", description: `Tether #${num} is now active.` });
       navigate(`/mission/${mission.id}`);
     } catch (error: unknown) {
-      toast({ title: "Error creating mission", description: getErrorMessage(error), variant: "destructive" });
+      toast({ title: "Error launching mission", description: getErrorMessage(error), variant: "destructive" });
+    } finally {
+      setLaunching(false);
+    }
+  };
+
+  const handleRetryAfterStepUp = async () => {
+    if (!stepUpMissionId) return;
+    setLaunching(true);
+    try {
+      await updateStatus.mutateAsync({ id: stepUpMissionId, status: "active" });
+      toast({ title: "Mission launched", description: "Step-up verified. Your agent is active." });
+      navigate(`/mission/${stepUpMissionId}`);
+    } catch (error: unknown) {
+      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+    } finally {
+      setLaunching(false);
     }
   };
 
@@ -187,16 +223,20 @@ export default function NewMission() {
 
           <MissionManifestCard manifest={manifest} />
 
-          <button
-            onClick={handleRequestApproval}
+          {stepUpMissionId && (
+            <StepUpVerificationPanel
+              missionId={stepUpMissionId}
+              permissions={stepUpPermissions}
+              variant="card"
+            />
+          )}
+
+          <SwipeToConfirm
+            onConfirm={stepUpMissionId ? handleRetryAfterStepUp : handleLaunchMission}
+            loading={launching}
             disabled={createMission.isPending}
-            className="btn-glass-primary w-full py-4 text-base disabled:opacity-50"
-          >
-            {createMission.isPending ? "Creating..." : "Request Approval →"}
-          </button>
-          <button className="btn-glass-ghost w-full py-3 text-sm flex items-center justify-center gap-2">
-            <span><Shield className="h-4 w-4" /></span> Check Policy
-          </button>
+            label={stepUpMissionId ? "Slide to Retry Launch" : "Slide to Launch Mission"}
+          />
         </div>
       )}
     </div>

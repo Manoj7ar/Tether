@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import MissionManifestCard from "@/components/mission/MissionManifestCard";
 import LiveExecutionFeed from "@/components/mission/LiveExecutionFeed";
 import RequiredAccounts from "@/components/mission/RequiredAccounts";
@@ -11,13 +11,13 @@ import { format } from "date-fns";
 import { toast } from "@/hooks/use-toast";
 import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { callEdgeFn } from "@/lib/edge-call";
+import { simulateDemoAction } from "@/lib/demo-data";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
-import { Play, FileText, CheckCircle, XCircle, AlertTriangle as TriangleAlert } from "lucide-react";
+import { Play, FileText, AlertTriangle as TriangleAlert } from "lucide-react";
 import { getErrorMessage } from "@/lib/error-utils";
-import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
-import StepUpVerificationPanel from "@/components/security/StepUpVerificationPanel";
-import { useMissionStepUpGate } from "@/hooks/useStepUp";
 
 interface MissionManifest {
   externalDataExposure?: "low" | "medium" | "high";
@@ -32,10 +32,10 @@ export default function MissionDetail() {
   const { id } = useParams();
   const queryClient = useQueryClient();
   const { data: mission, isLoading } = useMission(id);
+  const demo = useDemoMode();
 
-  // Realtime subscription: auto-update mission when status changes (e.g. phone approval)
   useEffect(() => {
-    if (!id) return;
+    if (!id || demo) return;
     const channel = supabase
       .channel(`mission-detail-${id}`)
       .on(
@@ -48,7 +48,7 @@ export default function MissionDetail() {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [id, queryClient]);
+  }, [id, queryClient, demo]);
   const { data: permissions = [] } = useMissionPermissions(mission?.id);
   const { data: executionLogs = [], isLoading: logsLoading } = useExecutionLog(mission?.id);
   const { liveEntries } = useRealtimeExecutionLog(mission?.id);
@@ -56,7 +56,6 @@ export default function MissionDetail() {
   const { data: userSettings } = useUserSettings();
   const { getAccessToken } = useAuth();
   const updateStatus = useUpdateMissionStatus();
-  const { needsStepUp, satisfied: stepUpSatisfied } = useMissionStepUpGate(mission?.id, permissions);
 
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
@@ -126,24 +125,31 @@ export default function MissionDetail() {
     if (!mission) return;
     setSimulating(label);
     try {
-      const token = await getAccessToken();
-      const { data, error } = await supabase.functions.invoke("agent-action", {
-        body: { mission_id: mission.id, action, params },
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (error) {
-        toast({ title: "Blocked", description: await edgeFunctionErrorMessage(error), variant: "destructive" });
-      } else if (data?.allowed) {
-        toast({ title: "Allowed", description: `${action} — approved by Tether` });
+      if (demo) {
+        const result = simulateDemoAction(action, params);
+        if (result.allowed) {
+          toast({ title: "Allowed", description: `${action} — approved by Tether` });
+        } else {
+          toast({ title: "Blocked", description: result.error || "Action blocked", variant: "destructive" });
+        }
       } else {
-        toast({ title: "Blocked", description: data?.error || "Action blocked", variant: "destructive" });
+        const data = await callEdgeFn(getAccessToken, {
+          functionName: "agent-action",
+          body: { mission_id: mission.id, action, params },
+        });
+        const result = data as { allowed?: boolean; error?: string };
+        if (result?.allowed) {
+          toast({ title: "Allowed", description: `${action} — approved by Tether` });
+        } else {
+          toast({ title: "Blocked", description: result?.error || "Action blocked", variant: "destructive" });
+        }
       }
     } catch (error: unknown) {
-      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+      toast({ title: "Blocked", description: getErrorMessage(error), variant: "destructive" });
     } finally {
       setSimulating(null);
     }
-  }, [mission, getAccessToken]);
+  }, [mission, getAccessToken, demo]);
 
   const simulateCompromised = useCallback(async () => {
     if (!mission) return;
@@ -278,7 +284,7 @@ export default function MissionDetail() {
         }`} />
         <span className="text-sm font-medium">
           {mission.status === "active" && `Agent is authorized to act · Expires in ${timeRemaining || "—"}`}
-          {mission.status === "pending" && "Awaiting approval"}
+          {mission.status === "pending" && "Launching..."}
           {mission.status === "completed" && "Mission completed"}
           {mission.status === "expired" && "Mission expired"}
           {mission.status === "rejected" && "Mission rejected"}
@@ -327,29 +333,6 @@ export default function MissionDetail() {
           >
             <Play className="h-4 w-4" /> Replay Mission
           </button>
-        </div>
-      )}
-
-      {/* Approval buttons for pending missions */}
-      {mission.status === "pending" && (
-        <div className="space-y-4">
-          <StepUpVerificationPanel missionId={mission.id} permissions={permissions} variant="card" />
-          <div className="flex gap-3">
-          <button
-            onClick={() => handleStatusChange("active")}
-            disabled={updateStatus.isPending || (needsStepUp && !stepUpSatisfied)}
-            className="btn-glass-primary flex-1 py-3 text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            <CheckCircle className="h-4 w-4" /> Approve Mission
-          </button>
-          <button
-            onClick={() => handleStatusChange("rejected")}
-            disabled={updateStatus.isPending}
-            className="btn-glass-destructive flex-1 py-3 text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-          >
-            <XCircle className="h-4 w-4" /> Reject Mission
-          </button>
-          </div>
         </div>
       )}
 

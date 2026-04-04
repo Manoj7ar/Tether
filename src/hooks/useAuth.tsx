@@ -82,6 +82,8 @@ interface AuthContextType {
   loading: boolean;
   login: (options?: LoginOptions) => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  /** True when the Auth0 session can no longer silently refresh tokens. Show a banner. */
+  sessionExpired: boolean;
   signOut: () => Promise<void>;
   user: AuthUser | null;
 }
@@ -94,6 +96,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   login: async () => {},
   resetPassword: async () => {},
+  sessionExpired: false,
   signOut: async () => {},
   user: null,
 });
@@ -158,11 +161,9 @@ function AuthBridge({
   const getTokenRef = useRef(getAccessTokenSilently);
   getTokenRef.current = getAccessTokenSilently;
 
-  const loginRedirectRef = useRef(loginWithRedirect);
-  loginRedirectRef.current = loginWithRedirect;
-
-  // Resilient token getter: retries with cache off on login_required. If both
-  // attempts fail, triggers a redirect login instead of showing a confusing error.
+  // Resilient token getter: retries with cache off on login_required.
+  // Never triggers loginWithRedirect — callers surface errors to the user
+  // and the SessionExpiredBanner prompts a manual re-login.
   const resilientGetToken = useCallback(async (options?: GetTokenSilentlyOptions): Promise<string> => {
     try {
       return await getTokenRef.current(options ?? {});
@@ -173,15 +174,8 @@ function AuthBridge({
       if (isLoginErr && !options?.cacheMode) {
         try {
           return await getTokenRef.current({ cacheMode: "off" });
-        } catch (retryErr) {
-          const retryMsg = retryErr instanceof Error ? retryErr.message : "";
-          if (/login.required|login_required|consent.required/i.test(retryMsg)) {
-            loginRedirectRef.current({
-              appState: { returnTo: window.location.pathname + window.location.search },
-            });
-            return new Promise(() => {});
-          }
-          throw retryErr;
+        } catch {
+          throw err;
         }
       }
       throw err;
@@ -189,19 +183,47 @@ function AuthBridge({
   }, []);
 
   // Derive stable isAuthenticated / loading:
-  // - If we have a cached user and Auth0 hasn't explicitly errored, we're still authed
-  // - loading is only true during the initial SDK load, NOT during transient drops
   const isAuthenticated = rawIsAuthenticated || (!!user && !isRealLogout.current);
   const isLoading = rawIsLoading && !user;
 
-  // Always keep the Supabase JWT getter registered while we consider the user authenticated.
+  // Detect persistent session expiry: Auth0 SDK dropped auth but we still
+  // have a cached user from a previous successful login.
+  const [sessionExpired, setSessionExpired] = useState(false);
+
+  useLayoutEffect(() => {
+    if (rawIsLoading) return;
+    if (rawIsAuthenticated) {
+      setSessionExpired(false);
+      return;
+    }
+    if (!isRealLogout.current && lastGoodUserRef.current) {
+      setSessionExpired(true);
+    }
+  }, [rawIsAuthenticated, rawIsLoading]);
+
+  // Silent token getter for the Supabase client's accessToken callback.
+  // Must never throw or redirect — Supabase calls it on every operation
+  // (realtime, queries, etc.). Returns null on failure so requests proceed
+  // anonymously; the explicit getAccessToken calls handle errors visibly.
+  const silentGetToken = useCallback(async (): Promise<string | null> => {
+    try {
+      return await getTokenRef.current({});
+    } catch {
+      try {
+        return await getTokenRef.current({ cacheMode: "off" });
+      } catch {
+        return null;
+      }
+    }
+  }, []);
+
   useLayoutEffect(() => {
     if (isAuthenticated) {
-      setSupabaseAccessTokenGetter(async () => resilientGetToken());
+      setSupabaseAccessTokenGetter(silentGetToken);
     } else if (!rawIsLoading) {
       setSupabaseAccessTokenGetter(null);
     }
-  }, [isAuthenticated, rawIsLoading, resilientGetToken]);
+  }, [isAuthenticated, rawIsLoading, silentGetToken]);
 
   useLayoutEffect(() => {
     return () => setSupabaseAccessTokenGetter(null);
@@ -243,9 +265,11 @@ function AuthBridge({
         throw new Error(text || "Password reset failed");
       }
     },
+    sessionExpired,
     signOut: async () => {
       isRealLogout.current = true;
       lastGoodUserRef.current = null;
+      setSessionExpired(false);
       await logout({
         logoutParams: {
           returnTo: window.location.origin,
@@ -262,6 +286,7 @@ function AuthBridge({
     loginWithRedirect,
     logout,
     resilientGetToken,
+    sessionExpired,
     user,
   ]);
 

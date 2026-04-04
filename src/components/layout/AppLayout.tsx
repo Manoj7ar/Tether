@@ -18,6 +18,7 @@ import { Home, Plus, List, LinkIcon, Shield, Settings } from "lucide-react";
 import { ReactNode } from "react";
 import NotificationBell from "@/components/layout/NotificationBell";
 import { useUserSettings } from "@/hooks/useUserSettings";
+import { useDemoMode } from "@/hooks/useDemoMode";
 
 function getInitialsFromDisplayName(name: string): string {
   const trimmed = name.trim();
@@ -135,7 +136,36 @@ function UserSection() {
 
 
 function DemoModeBanner() {
-  return null;
+  const demo = useDemoMode();
+  if (!demo) return null;
+
+  return (
+    <div className="bg-amber-500/15 border-b border-amber-500/30 px-4 py-1.5 flex items-center justify-center gap-2 text-xs">
+      <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+      <span className="font-semibold text-amber-700 dark:text-amber-400">
+        Demo Mode — All data is mocked. No real API calls are being made.
+      </span>
+    </div>
+  );
+}
+
+function SessionExpiredBanner() {
+  const { sessionExpired, login } = useAuth();
+  if (!sessionExpired) return null;
+
+  return (
+    <div className="bg-destructive/10 border-b border-destructive/30 px-4 py-2 flex items-center justify-between text-sm">
+      <span className="text-destructive font-medium">
+        Your session has expired.
+      </span>
+      <button
+        onClick={() => login({ returnTo: window.location.pathname })}
+        className="text-destructive underline underline-offset-2 font-semibold hover:opacity-80 transition-opacity"
+      >
+        Sign in again
+      </button>
+    </div>
+  );
 }
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -151,6 +181,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <NotificationBell />
               </div>
             </header>
+            <SessionExpiredBanner />
             <DemoModeBanner />
             <main className="flex-1 overflow-auto bg-background">
               {children}

@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { DEMO_TRUST_SCORE } from "@/lib/demo-data";
 
 export interface TrustScoreData {
   score: number;
@@ -16,10 +18,13 @@ interface TrustScoreHistoryEntry {
 
 export function useTrustScore() {
   const { user } = useAuth();
+  const demo = useDemoMode();
 
   return useQuery({
-    queryKey: ["trust_score", user?.id],
+    queryKey: ["trust_score", user?.id, demo],
     queryFn: async (): Promise<TrustScoreData> => {
+      if (demo) return DEMO_TRUST_SCORE;
+
       const { data, error } = await supabase
         .from("agent_trust_scores")
         .select("*")

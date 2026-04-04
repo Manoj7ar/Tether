@@ -1,8 +1,14 @@
-import type { GetTokenSilentlyOptions } from "@auth0/auth0-spa-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { callEdgeApi, callEdgeFn } from "@/lib/edge-call";
+import {
+  DEMO_MISSIONS,
+  DEMO_EXECUTION_LOGS,
+  DEMO_CONNECTED_ACCOUNTS,
+  DEMO_MISSION_PERMISSIONS,
+  DEMO_MISSION_STATS,
+} from "@/lib/demo-data";
 import type { Tables } from "@/integrations/supabase/types";
 
 export type Mission = Tables<"missions">;
@@ -10,80 +16,26 @@ export type MissionPermission = Tables<"mission_permissions">;
 export type ExecutionLogEntry = Tables<"execution_log">;
 export type ConnectedAccount = Tables<"connected_accounts">;
 
-const TOKEN_TIMEOUT_MS = 20_000;
-const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/missions-api`;
-
-function withTimeout<T>(promise: Promise<T>, ms: number, msg: string): Promise<T> {
-  let tid: ReturnType<typeof setTimeout>;
-  const tp = new Promise<never>((_, rej) => { tid = setTimeout(() => rej(new Error(msg)), ms); });
-  return Promise.race([promise, tp]).finally(() => clearTimeout(tid!));
-}
-
-function isLoginRequired(err: unknown): boolean {
-  return err instanceof Error && /login.required|login_required|consent.required/i.test(err.message);
-}
-
-async function callMissionsApi(
-  getAccessToken: (opts?: GetTokenSilentlyOptions) => Promise<string>,
-  body: Record<string, unknown>,
-): Promise<unknown> {
-  const doFetch = async (token: string) => {
-    const res = await fetch(FUNCTIONS_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(body),
-    });
-    const json = await res.json().catch(() => null);
-    return { status: res.status, json };
-  };
-
-  let token: string;
-  try {
-    token = await withTimeout(
-      getAccessToken(),
-      TOKEN_TIMEOUT_MS,
-      "Session expired — try signing out and back in.",
-    );
-  } catch (e) {
-    if (isLoginRequired(e)) {
-      token = await withTimeout(
-        getAccessToken({ cacheMode: "off" }),
-        TOKEN_TIMEOUT_MS,
-        "Session expired — try signing out and back in.",
-      );
-    } else {
-      throw e;
-    }
-  }
-
-  let { status, json } = await doFetch(token);
-
-  if (status === 401) {
-    const freshToken = await withTimeout(
-      getAccessToken({ cacheMode: "off" }),
-      TOKEN_TIMEOUT_MS,
-      "Session expired — try signing out and back in.",
-    );
-    ({ status, json } = await doFetch(freshToken));
-  }
-
-  if (!json) throw new Error("Empty response from server");
-  if (status >= 400) throw new Error(json.error || `Server error (${status})`);
-  if (json.error) throw new Error(json.error);
-  return json.data ?? null;
-}
+const MISSIONS_API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/missions-api`;
+const CREATE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-mission`;
 
 // ── Hooks ──────────────────────────────────────────────────────────────
 
 export function useMissions(statusFilter?: string) {
   const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
   return useQuery({
-    queryKey: ["missions", statusFilter],
+    queryKey: ["missions", statusFilter, demo],
     queryFn: async () => {
-      const data = await callMissionsApi(getAccessToken, { action: "list", statusFilter });
+      if (demo) {
+        let missions = DEMO_MISSIONS as unknown as Mission[];
+        if (statusFilter && statusFilter !== "all") missions = missions.filter((m) => m.status === statusFilter);
+        return missions;
+      }
+      const data = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "list", statusFilter },
+      });
       return (data ?? []) as Mission[];
     },
     enabled: !!user,
@@ -92,10 +44,15 @@ export function useMissions(statusFilter?: string) {
 
 export function useActiveMissions() {
   const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
   return useQuery({
-    queryKey: ["missions", "active"],
+    queryKey: ["missions", "active", demo],
     queryFn: async () => {
-      const data = await callMissionsApi(getAccessToken, { action: "list_active" });
+      if (demo) return (DEMO_MISSIONS as unknown as Mission[]).filter((m) => m.status === "active");
+      const data = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "list_active" },
+      });
       return (data ?? []) as Mission[];
     },
     enabled: !!user,
@@ -104,14 +61,23 @@ export function useActiveMissions() {
 
 export function useMission(id: string | undefined) {
   const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
   return useQuery({
-    queryKey: ["mission", id],
+    queryKey: ["mission", id, demo],
     queryFn: async () => {
-      const stored = id ? sessionStorage.getItem(`demo_mission_${id}`) : null;
-      if (stored) {
-        return JSON.parse(stored) as Mission;
+      if (demo) {
+        const found = (DEMO_MISSIONS as unknown as Mission[]).find((m) => m.id === id);
+        if (found) return found;
+        const stored = id ? sessionStorage.getItem(`demo_mission_${id}`) : null;
+        if (stored) return JSON.parse(stored) as Mission;
+        return null;
       }
-      const data = await callMissionsApi(getAccessToken, { action: "get", id });
+      const stored = id ? sessionStorage.getItem(`demo_mission_${id}`) : null;
+      if (stored) return JSON.parse(stored) as Mission;
+      const data = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "get", id },
+      });
       return (data as Mission) ?? null;
     },
     enabled: !!user && !!id,
@@ -120,10 +86,15 @@ export function useMission(id: string | undefined) {
 
 export function useMissionPermissions(missionId: string | undefined) {
   const { getAccessToken } = useAuth();
+  const demo = useDemoMode();
   return useQuery({
-    queryKey: ["mission_permissions", missionId],
+    queryKey: ["mission_permissions", missionId, demo],
     queryFn: async () => {
-      const data = await callMissionsApi(getAccessToken, { action: "list_permissions", mission_id: missionId });
+      if (demo) return DEMO_MISSION_PERMISSIONS as unknown as MissionPermission[];
+      const data = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "list_permissions", mission_id: missionId },
+      });
       return (data ?? []) as MissionPermission[];
     },
     enabled: !!missionId,
@@ -132,13 +103,17 @@ export function useMissionPermissions(missionId: string | undefined) {
 
 export function useExecutionLog(missionId?: string) {
   const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
   return useQuery({
-    queryKey: ["execution_log", missionId],
+    queryKey: ["execution_log", missionId, demo],
     queryFn: async () => {
-      const data = await callMissionsApi(getAccessToken, {
-        action: "list_execution_log",
-        mission_id: missionId,
-        limit: 100,
+      if (demo) {
+        const logs = DEMO_EXECUTION_LOGS as unknown as ExecutionLogEntry[];
+        return missionId ? logs.filter((l) => l.mission_id === missionId) : logs;
+      }
+      const data = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "list_execution_log", mission_id: missionId, limit: 100 },
       });
       return (data ?? []) as ExecutionLogEntry[];
     },
@@ -148,12 +123,14 @@ export function useExecutionLog(missionId?: string) {
 
 export function useRecentActivity() {
   const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
   return useQuery({
-    queryKey: ["execution_log", "recent"],
+    queryKey: ["execution_log", "recent", demo],
     queryFn: async () => {
-      const data = await callMissionsApi(getAccessToken, {
-        action: "list_execution_log",
-        limit: 20,
+      if (demo) return (DEMO_EXECUTION_LOGS as unknown as ExecutionLogEntry[]).slice(0, 20);
+      const data = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "list_execution_log", limit: 20 },
       });
       return (data ?? []) as ExecutionLogEntry[];
     },
@@ -163,21 +140,25 @@ export function useRecentActivity() {
 
 export function useConnectedAccounts() {
   const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
   return useQuery({
-    queryKey: ["connected_accounts"],
+    queryKey: ["connected_accounts", demo],
     queryFn: async () => {
-      const data = await callMissionsApi(getAccessToken, { action: "list_connected_accounts" });
+      if (demo) return DEMO_CONNECTED_ACCOUNTS as unknown as ConnectedAccount[];
+      const data = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "list_connected_accounts" },
+      });
       return (data ?? []) as ConnectedAccount[];
     },
     enabled: !!user,
   });
 }
 
-const CREATE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-mission`;
-
 export function useCreateMission() {
   const queryClient = useQueryClient();
   const { getAccessToken } = useAuth();
+  const demo = useDemoMode();
 
   return useMutation({
     mutationFn: async (input: {
@@ -188,38 +169,31 @@ export function useCreateMission() {
       intent_audit?: Record<string, unknown>;
       permissions?: { provider: string; scope: string; action_type: string; reason?: string }[];
     }) => {
-      let token: string;
-      try {
-        token = await withTimeout(getAccessToken(), TOKEN_TIMEOUT_MS, "Session expired.");
-      } catch (e) {
-        if (isLoginRequired(e)) {
-          token = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
-        } else { throw e; }
+      if (demo) {
+        const fakeId = crypto.randomUUID();
+        const nowTs = new Date();
+        const fake = {
+          id: fakeId,
+          tether_number: Math.floor(Math.random() * 900) + 100,
+          objective: input.objective,
+          status: "pending",
+          time_limit_mins: input.time_limit_mins,
+          risk_level: input.risk_level || "low",
+          manifest_json: input.manifest_json || null,
+          created_at: nowTs.toISOString(),
+          approved_at: null,
+          expires_at: null,
+          completed_at: null,
+          user_id: "demo",
+        } as unknown as Mission;
+        sessionStorage.setItem(`demo_mission_${fakeId}`, JSON.stringify(fake));
+        return fake;
       }
-
-      const res = await fetch(CREATE_FN_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(input),
+      const data = await callEdgeApi(getAccessToken, {
+        url: CREATE_FN_URL,
+        body: input as unknown as Record<string, unknown>,
       });
-      const json = await res.json().catch(() => null);
-
-      if (res.status === 401) {
-        const fresh = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
-        const retry = await fetch(CREATE_FN_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${fresh}` },
-          body: JSON.stringify(input),
-        });
-        const retryJson = await retry.json().catch(() => null);
-        if (!retry.ok) throw new Error(retryJson?.error || `Server error (${retry.status})`);
-        if (retryJson?.error) throw new Error(retryJson.error);
-        return retryJson.data as Mission;
-      }
-
-      if (!res.ok) throw new Error(json?.error || `Server error (${res.status})`);
-      if (json?.error) throw new Error(json.error);
-      return json.data as Mission;
+      return data as Mission;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });
@@ -230,39 +204,33 @@ export function useCreateMission() {
 export function useUpdateMissionStatus() {
   const queryClient = useQueryClient();
   const { getAccessToken } = useAuth();
+  const demo = useDemoMode();
 
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      if (status === "active") {
-        let token: string;
-        try {
-          token = await withTimeout(getAccessToken(), TOKEN_TIMEOUT_MS, "Session expired.");
-        } catch (e) {
-          if (isLoginRequired(e)) {
-            token = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
-          } else { throw e; }
-        }
-
-        const doApprove = async (t: string) => {
-          const { data, error } = await supabase.functions.invoke("mission-approve", {
-            body: { mission_id: id },
-            headers: { Authorization: `Bearer ${t}` },
-          });
-          return { data, error };
-        };
-
-        let { data, error } = await doApprove(token);
-
-        if (error) {
-          const msg = await edgeFunctionErrorMessage(error);
-          if (/unauthorized|invalid.*session/i.test(msg)) {
-            const fresh = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
-            ({ data, error } = await doApprove(fresh));
+      if (demo) {
+        const stored = sessionStorage.getItem(`demo_mission_${id}`);
+        if (stored) {
+          const m = JSON.parse(stored) as Record<string, unknown>;
+          m.status = status;
+          if (status === "active") {
+            m.approved_at = new Date().toISOString();
+            m.expires_at = new Date(Date.now() + ((m.time_limit_mins as number) || 30) * 60_000).toISOString();
           }
-          if (error) throw new Error(await edgeFunctionErrorMessage(error));
+          if (status === "completed" || status === "rejected") m.completed_at = new Date().toISOString();
+          sessionStorage.setItem(`demo_mission_${id}`, JSON.stringify(m));
+          return m as unknown as Mission;
         }
+        const found = (DEMO_MISSIONS as unknown as Mission[]).find((m) => m.id === id);
+        return found || ({ id, status } as unknown as Mission);
+      }
 
-        const payload = data as { error?: string; mission?: Mission; blocked?: boolean };
+      if (status === "active") {
+        const result = await callEdgeFn(getAccessToken, {
+          functionName: "mission-approve",
+          body: { mission_id: id },
+        });
+        const payload = result as { error?: string; mission?: Mission; blocked?: boolean };
         if (payload?.error || !payload?.mission) {
           throw new Error(payload?.error || "Approval failed");
         }
@@ -274,12 +242,11 @@ export function useUpdateMissionStatus() {
         updates.completed_at = new Date().toISOString();
       }
 
-      const result = await callMissionsApi(getAccessToken, {
-        action: "update",
-        id,
-        updates,
+      const data = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "update", id, updates },
       });
-      return result as Mission;
+      return data as Mission;
     },
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });
@@ -293,10 +260,15 @@ export function useUpdateMissionStatus() {
 
 export function useMissionStats() {
   const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
   return useQuery({
-    queryKey: ["mission_stats"],
+    queryKey: ["mission_stats", demo],
     queryFn: async () => {
-      const data = await callMissionsApi(getAccessToken, { action: "mission_stats" });
+      if (demo) return DEMO_MISSION_STATS;
+      const data = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "mission_stats" },
+      });
       return data as {
         totalMissions: number;
         actionsApproved: number;

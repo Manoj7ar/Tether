@@ -272,9 +272,9 @@ export default function Settings() {
                 Demo / mock mode
               </h2>
               <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-                For screen recordings: mission manifest, policy AI, dashboard nudges, and agent/MCP tool execution return
-                fixed scripted content and do not call live provider APIs. Auth0 sign-in and connecting GitHub/Gmail in
-                Connected Accounts stay real. Mission approval, policy blocks, and scope checks behave normally.
+                Mocks everything — missions, analytics, nudges, trust scores, policy rules, notifications,
+                connected accounts, MCP tools, and all API calls return fixed demo data.
+                Only Auth0 sign-in/out and the demo-mode toggle itself stay real.
               </p>
             </div>
             <Switch checked={demoMode} onCheckedChange={handleToggleDemo} aria-label="Toggle demo or mock mode" />
@@ -282,7 +282,7 @@ export default function Settings() {
         </div>
         {demoMode && (
           <div className="px-6 py-3 bg-accent/10 text-xs text-muted-foreground border-t border-border">
-            A banner appears on every page while demo mode is on. Turn it off when you are done recording.
+            A banner appears on every page while demo mode is on. All network requests are replaced with client-side fixture data. Turn it off when you are done.
           </div>
         )}
       </section>

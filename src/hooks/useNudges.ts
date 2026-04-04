@@ -1,6 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { callEdgeFn } from "@/lib/edge-call";
+import { DEMO_NUDGES } from "@/lib/demo-data";
 
 export interface Nudge {
   type: "suggestion" | "warning" | "optimization";
@@ -10,21 +13,17 @@ export interface Nudge {
 
 export function useNudges() {
   const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
 
   const query = useQuery({
-    queryKey: ["nudges", user?.id],
+    queryKey: ["nudges", user?.id, demo],
     queryFn: async (): Promise<{ nudges: Nudge[]; dismissedIds: string[] }> => {
-      const token = await getAccessToken();
-      const { data, error } = await supabase.functions.invoke("generate-nudges", {
-        headers: { Authorization: `Bearer ${token}` },
+      if (demo) return { nudges: DEMO_NUDGES, dismissedIds: [] };
+
+      const data = await callEdgeFn(getAccessToken, {
+        functionName: "generate-nudges",
       });
 
-      if (error) {
-        console.error("Nudge fetch error:", error);
-        return { nudges: [], dismissedIds: [] };
-      }
-
-      // Also get dismissed IDs
       const { data: nudgeRow } = await supabase
         .from("user_nudges")
         .select("dismissed_ids")
@@ -34,12 +33,12 @@ export function useNudges() {
       const dismissedIds = Array.isArray(nudgeRow?.dismissed_ids) ? (nudgeRow.dismissed_ids as string[]) : [];
 
       return {
-        nudges: data?.nudges || [],
+        nudges: (data as { nudges?: Nudge[] })?.nudges || [],
         dismissedIds,
       };
     },
     enabled: !!user,
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 5 * 60 * 1000,
   });
 
   return query;
@@ -48,9 +47,12 @@ export function useNudges() {
 export function useDismissNudge() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const demo = useDemoMode();
 
   return useMutation({
     mutationFn: async (nudgeTitle: string) => {
+      if (demo) return;
+
       const { data: existing } = await supabase
         .from("user_nudges")
         .select("dismissed_ids")

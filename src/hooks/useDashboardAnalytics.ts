@@ -1,54 +1,27 @@
-import type { GetTokenSilentlyOptions } from "@auth0/auth0-spa-js";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { callEdgeApi } from "@/lib/edge-call";
+import { DEMO_ANALYTICS } from "@/lib/demo-data";
 import { subDays, format, startOfDay } from "date-fns";
 
-const TOKEN_TIMEOUT_MS = 20_000;
-const FUNCTIONS_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/missions-api`;
-
-function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
-  let tid: ReturnType<typeof setTimeout>;
-  const tp = new Promise<never>((_, rej) => { tid = setTimeout(() => rej(new Error(msg)), ms); });
-  return Promise.race([p, tp]).finally(() => clearTimeout(tid!));
-}
-
-async function callAnalytics(
-  getAccessToken: (opts?: GetTokenSilentlyOptions) => Promise<string>,
-): Promise<{ missions: { id: string; status: string; risk_level: string | null; created_at: string }[]; logs: { id: string; status: string; timestamp: string }[] }> {
-  const doFetch = async (token: string) => {
-    const res = await fetch(FUNCTIONS_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ action: "analytics" }),
-    });
-    const json = await res.json().catch(() => null);
-    return { status: res.status, json };
-  };
-
-  const token = await withTimeout(getAccessToken(), TOKEN_TIMEOUT_MS, "Session expired.");
-  let { status, json } = await doFetch(token);
-
-  if (status === 401) {
-    const fresh = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
-    ({ status, json } = await doFetch(fresh));
-  }
-
-  if (!json) throw new Error("Empty response");
-  if (status >= 400) throw new Error(json.error || `Server error (${status})`);
-  if (json.error) throw new Error(json.error);
-  return json.data ?? { missions: [], logs: [] };
-}
+const MISSIONS_API_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/missions-api`;
 
 export function useDashboardAnalytics() {
   const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
 
   return useQuery({
-    queryKey: ["dashboard_analytics"],
+    queryKey: ["dashboard_analytics", demo],
     queryFn: async () => {
-      const { missions, logs } = await callAnalytics(getAccessToken);
+      if (demo) return DEMO_ANALYTICS;
+
+      const raw = await callEdgeApi(getAccessToken, {
+        url: MISSIONS_API_URL,
+        body: { action: "analytics" },
+      }) as { missions: { id: string; status: string; risk_level: string | null; created_at: string }[]; logs: { id: string; status: string; timestamp: string }[] };
+
+      const { missions, logs } = raw ?? { missions: [], logs: [] };
 
       const statusCounts: Record<string, number> = {};
       missions.forEach((m) => { statusCounts[m.status] = (statusCounts[m.status] || 0) + 1; });

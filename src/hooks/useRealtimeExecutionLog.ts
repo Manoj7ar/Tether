@@ -1,19 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import type { ExecutionLogEntry } from "@/hooks/useMissions";
 
-/**
- * Subscribe to realtime execution_log inserts.
- * Optionally filter by missionId.
- * Returns the latest entries streamed in (newest first).
- */
 export function useRealtimeExecutionLog(missionId?: string) {
   const queryClient = useQueryClient();
+  const demo = useDemoMode();
   const [liveEntries, setLiveEntries] = useState<ExecutionLogEntry[]>([]);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   useEffect(() => {
+    if (demo) return;
+
     const filter = missionId
       ? `mission_id=eq.${missionId}`
       : undefined;
@@ -31,8 +30,6 @@ export function useRealtimeExecutionLog(missionId?: string) {
         (payload) => {
           const newEntry = payload.new as ExecutionLogEntry;
           setLiveEntries((prev) => [newEntry, ...prev]);
-
-          // Also invalidate react-query caches so non-realtime consumers stay fresh
           queryClient.invalidateQueries({ queryKey: ["execution_log"] });
           queryClient.invalidateQueries({ queryKey: ["mission_stats"] });
         }
@@ -44,7 +41,7 @@ export function useRealtimeExecutionLog(missionId?: string) {
     return () => {
       channel.unsubscribe();
     };
-  }, [missionId, queryClient]);
+  }, [missionId, queryClient, demo]);
 
   const clearLive = () => setLiveEntries([]);
 

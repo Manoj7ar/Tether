@@ -11,6 +11,7 @@ import TrustScoreCard from "@/components/dashboard/TrustScoreCard";
 import NudgeCards from "@/components/dashboard/NudgeCards";
 import AmbientBudgetCard from "@/components/dashboard/AmbientBudgetCard";
 import { supabase } from "@/integrations/supabase/client";
+import { useDemoMode } from "@/hooks/useDemoMode";
 import { useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, format } from "date-fns";
 import { useEffect, useMemo, type ReactNode } from "react";
@@ -43,12 +44,14 @@ const statusLabels: Record<string, string> = {
 export default function Dashboard() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const demo = useDemoMode();
   const { data: activeMissions = [], isLoading: missionsLoading } = useActiveMissions();
   const { data: recentActivity = [], isLoading: activityLoading } = useRecentActivity();
   const { data: connectedAccounts = [] } = useConnectedAccounts();
   const { liveEntries } = useRealtimeExecutionLog();
 
   useEffect(() => {
+    if (demo) return;
     const channel = supabase
       .channel("dashboard-missions")
       .on(
@@ -60,7 +63,7 @@ export default function Dashboard() {
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [queryClient]);
+  }, [queryClient, demo]);
 
   const mergedActivity = useMemo(() => {
     const seen = new Set<string>();

@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { getAppConfig, getSupabaseFunctionsBaseUrl } from "@/lib/env";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { callEdgeApi } from "@/lib/edge-call";
+import { getSupabaseFunctionsBaseUrl } from "@/lib/env";
+import { DEMO_STEP_UP_VERIFICATION } from "@/lib/demo-data";
 import type { MissionPermission } from "@/hooks/useMissions";
 import {
   getCapableActionIdsFromPermissions,
@@ -40,32 +43,27 @@ export function setPendingStepUp(missionId: string, provider: StepUpProvider) {
 }
 
 export function useStepUpStatus(missionId: string | undefined) {
-  const { getAccessToken } = useAuth();
+  const { user, getAccessToken } = useAuth();
+  const demo = useDemoMode();
 
   return useQuery({
-    queryKey: ["step_up_status", missionId],
+    queryKey: ["step_up_status", missionId, demo],
     queryFn: async (): Promise<StepUpVerification | null> => {
+      if (demo) return DEMO_STEP_UP_VERIFICATION as StepUpVerification;
       if (!missionId) return null;
-      const token = await getAccessToken();
       const url = new URL(`${getSupabaseFunctionsBaseUrl()}/step-up-status`);
       url.searchParams.set("mission_id", missionId);
 
-      const res = await fetch(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          apikey: getAppConfig().supabasePublishableKey,
-        },
+      const data = await callEdgeApi(getAccessToken, {
+        url: url.toString(),
+        method: "GET",
+        includeApiKey: true,
       });
 
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(typeof data.error === "string" ? data.error : "Step-up status failed");
-      }
-
-      return (data.verification as StepUpVerification | null) ?? null;
+      return ((data as { verification?: StepUpVerification })?.verification as StepUpVerification | null) ?? (data as StepUpVerification | null) ?? null;
     },
-    enabled: !!missionId,
-    refetchInterval: 15_000,
+    enabled: !!user && !!missionId,
+    refetchInterval: demo ? false : 15_000,
   });
 }
 
@@ -104,25 +102,16 @@ export function useMissionStepUpGate(missionId: string | undefined, permissions:
 export function useCompleteStepUp() {
   const queryClient = useQueryClient();
   const { getAccessToken } = useAuth();
+  const demo = useDemoMode();
 
   return useMutation({
     mutationFn: async (input: { missionId: string; provider: StepUpProvider }) => {
-      const token = await getAccessToken();
-      const res = await fetch(`${getSupabaseFunctionsBaseUrl()}/step-up-complete`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          apikey: getAppConfig().supabasePublishableKey,
-        },
-        body: JSON.stringify({ missionId: input.missionId, provider: input.provider }),
+      if (demo) return { success: true, expires_at: new Date(Date.now() + 30 * 60_000).toISOString() };
+      const data = await callEdgeApi(getAccessToken, {
+        url: `${getSupabaseFunctionsBaseUrl()}/step-up-complete`,
+        body: { missionId: input.missionId, provider: input.provider },
+        includeApiKey: true,
       });
-
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(typeof data.error === "string" ? data.error : "Step-up failed");
-      }
-
       return data as { success: boolean; expires_at: string };
     },
     onSuccess: (_, vars) => {

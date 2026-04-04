@@ -1,6 +1,8 @@
 import { useEffect, useCallback, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { callEdgeFn } from "@/lib/edge-call";
 import type { Mission } from "@/hooks/useMissions";
 
 function currentPermission(): NotificationPermission {
@@ -28,10 +30,11 @@ export function useNotificationPermission() {
 
 export function useMissionNotifications() {
   const { user } = useAuth();
+  const demo = useDemoMode();
   const notifiedRef = useRef(new Set<string>());
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || demo) return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
 
     const channel = supabase
@@ -39,25 +42,24 @@ export function useMissionNotifications() {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "UPDATE",
           schema: "public",
           table: "missions",
-          filter: `status=eq.pending`,
+          filter: `status=eq.active`,
         },
         (payload) => {
           const mission = payload.new as Mission;
-          // Only notify for this user's missions and avoid duplicates
           if (mission.user_id !== user.id) return;
           if (notifiedRef.current.has(mission.id)) return;
           notifiedRef.current.add(mission.id);
 
           const tetherNum = String(mission.tether_number).padStart(3, "0");
 
-          new Notification(`Tether #${tetherNum} — Approval Required`, {
-            body: mission.objective?.slice(0, 120) || "A new mission needs your approval.",
+          new Notification(`Tether #${tetherNum} — Mission Launched`, {
+            body: mission.objective?.slice(0, 120) || "Your mission is now active.",
             icon: "/favicon.svg",
             tag: `mission-${mission.id}`,
-            data: { url: `/approve?mission=${mission.id}` },
+            data: { url: `/mission/${mission.id}` },
           });
         }
       )
@@ -66,7 +68,7 @@ export function useMissionNotifications() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user, demo]);
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
@@ -78,19 +80,16 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return arr;
 }
 
-/**
- * Subscribes the browser to Web Push after notification permission is granted.
- * Sends the subscription to the push-subscribe Edge Function.
- * Retries once with a fresh token if the first attempt fails.
- */
 export function usePushSubscription(notificationPermission?: NotificationPermission) {
   const { user, getAccessToken, isAuthenticated } = useAuth();
+  const demo = useDemoMode();
   const subscribedRef = useRef(false);
   const [subscribed, setSubscribed] = useState(false);
   const perm = notificationPermission ?? currentPermission();
   const attemptRef = useRef(0);
 
   useEffect(() => {
+    if (demo) return;
     if (!isAuthenticated || !user) return;
     if (subscribedRef.current) return;
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
@@ -101,7 +100,6 @@ export function usePushSubscription(notificationPermission?: NotificationPermiss
 
     let cancelled = false;
     attemptRef.current++;
-    const thisAttempt = attemptRef.current;
 
     (async () => {
       try {
@@ -117,24 +115,14 @@ export function usePushSubscription(notificationPermission?: NotificationPermiss
 
         if (cancelled) return;
 
-        const sendSubscription = async (forceRefresh: boolean) => {
-          const token = await getAccessToken(forceRefresh ? { cacheMode: "off" } : {});
-          return supabase.functions.invoke("push-subscribe", {
-            body: { subscription: sub!.toJSON() },
-            headers: { Authorization: `Bearer ${token}` },
-          });
-        };
+        await callEdgeFn(getAccessToken, {
+          functionName: "push-subscribe",
+          body: { subscription: sub!.toJSON() },
+        });
 
-        let { error } = await sendSubscription(false);
-        if (error && thisAttempt === attemptRef.current) {
-          ({ error } = await sendSubscription(true));
-        }
-
-        if (!error && !cancelled) {
+        if (!cancelled) {
           subscribedRef.current = true;
           setSubscribed(true);
-        } else if (error) {
-          console.error("push-subscribe failed:", error);
         }
       } catch (e) {
         console.error("Push subscription error:", e);
@@ -142,7 +130,7 @@ export function usePushSubscription(notificationPermission?: NotificationPermiss
     })();
 
     return () => { cancelled = true; };
-  }, [isAuthenticated, user, getAccessToken, perm]);
+  }, [isAuthenticated, user, getAccessToken, perm, demo]);
 
   return { subscribed };
 }

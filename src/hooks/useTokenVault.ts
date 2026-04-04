@@ -1,6 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
-import { getAppConfig, getSupabaseFunctionsBaseUrl } from "@/lib/env";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { callEdgeApi } from "@/lib/edge-call";
+import { getSupabaseFunctionsBaseUrl } from "@/lib/env";
+import { toast } from "sonner";
 
 type VaultConnectInput = string | { provider: string; returnPath?: string };
 
@@ -16,28 +19,24 @@ function normalizeVaultInput(input: VaultConnectInput): { provider: string; retu
 
 export function useConnectProvider() {
   const { getAccessToken } = useAuth();
+  const demo = useDemoMode();
 
   return useMutation({
     mutationFn: async (input: VaultConnectInput) => {
+      if (demo) {
+        const { provider } = normalizeVaultInput(input);
+        toast.success(`Demo: ${provider} connected`);
+        return { demo: true };
+      }
       const { provider, returnPath } = normalizeVaultInput(input);
-      const token = await getAccessToken();
-      const res = await fetch(buildTokenVaultUrl("connect"), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          apikey: getAppConfig().supabasePublishableKey,
-        },
-        body: JSON.stringify({ provider, returnPath }),
+      const data = await callEdgeApi(getAccessToken, {
+        url: buildTokenVaultUrl("connect"),
+        body: { provider, returnPath },
+        includeApiKey: true,
       });
 
-      const data = await res.json().catch(() => ({ error: "Request failed" }));
-      if (!res.ok) {
-        throw new Error(data.error || "Request failed");
-      }
-
-      if (data?.authorizeUrl) {
-        window.location.href = data.authorizeUrl;
+      if ((data as { authorizeUrl?: string })?.authorizeUrl) {
+        window.location.href = (data as { authorizeUrl: string }).authorizeUrl;
       }
 
       return data;
@@ -47,28 +46,24 @@ export function useConnectProvider() {
 
 export function useReauthProvider() {
   const { getAccessToken } = useAuth();
+  const demo = useDemoMode();
 
   return useMutation({
     mutationFn: async (input: VaultConnectInput) => {
+      if (demo) {
+        const { provider } = normalizeVaultInput(input);
+        toast.success(`Demo: ${provider} re-authenticated`);
+        return { demo: true };
+      }
       const { provider, returnPath } = normalizeVaultInput(input);
-      const token = await getAccessToken();
-      const res = await fetch(buildTokenVaultUrl("reauth"), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          apikey: getAppConfig().supabasePublishableKey,
-        },
-        body: JSON.stringify({ provider, returnPath }),
+      const data = await callEdgeApi(getAccessToken, {
+        url: buildTokenVaultUrl("reauth"),
+        body: { provider, returnPath },
+        includeApiKey: true,
       });
 
-      const data = await res.json().catch(() => ({ error: "Request failed" }));
-      if (!res.ok) {
-        throw new Error(data.error || "Request failed");
-      }
-
-      if (data?.authorizeUrl) {
-        window.location.href = data.authorizeUrl;
+      if ((data as { authorizeUrl?: string })?.authorizeUrl) {
+        window.location.href = (data as { authorizeUrl: string }).authorizeUrl;
       }
 
       return data;
@@ -79,25 +74,19 @@ export function useReauthProvider() {
 export function useDisconnectAccount() {
   const queryClient = useQueryClient();
   const { getAccessToken } = useAuth();
+  const demo = useDemoMode();
 
   return useMutation({
     mutationFn: async (accountId: string) => {
-      const token = await getAccessToken();
-      const res = await fetch(buildTokenVaultUrl("disconnect"), {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          apikey: getAppConfig().supabasePublishableKey,
-        },
-        body: JSON.stringify({ accountId }),
-      });
-
-      const data = await res.json().catch(() => ({ error: "Request failed" }));
-      if (!res.ok) {
-        throw new Error(data.error || "Request failed");
+      if (demo) {
+        toast.success("Demo: Account disconnected");
+        return { demo: true };
       }
-
+      const data = await callEdgeApi(getAccessToken, {
+        url: buildTokenVaultUrl("disconnect"),
+        body: { accountId },
+        includeApiKey: true,
+      });
       return data;
     },
     onSuccess: () => {

@@ -8,9 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { callEdgeFn } from "@/lib/edge-call";
+import { DEMO_POLICY_RESPONSE } from "@/lib/demo-data";
 import { getErrorMessage } from "@/lib/error-utils";
-import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 
 interface GeneratedPolicyRule {
   action: string;
@@ -202,6 +203,7 @@ function RuleCard({
 
 export default function PolicyEngine() {
   const { getAccessToken } = useAuth();
+  const demo = useDemoMode();
   const { data, isLoading } = usePolicyRules();
   const saveMutation = useSavePolicyRules();
   const { data: logs } = useExecutionLog();
@@ -265,14 +267,15 @@ export default function PolicyEngine() {
     setNlGenerating(true);
     setNlResult(null);
     try {
-      const token = await getAccessToken();
-      const { data: result, error } = await supabase.functions.invoke("generate-policy", {
-        body: { description: nlInput },
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (error) throw new Error(await edgeFunctionErrorMessage(error));
-      if (result?.error) throw new Error(result.error);
-      setNlResult(result as GeneratedPolicyResponse);
+      if (demo) {
+        setNlResult({ explanation: DEMO_POLICY_RESPONSE.reasoning, rules: DEMO_POLICY_RESPONSE.rules });
+      } else {
+        const result = await callEdgeFn(getAccessToken, {
+          functionName: "generate-policy",
+          body: { description: nlInput },
+        });
+        setNlResult(result as GeneratedPolicyResponse);
+      }
     } catch (error: unknown) {
       toast({ title: "Failed to generate policy", description: getErrorMessage(error), variant: "destructive" });
     } finally {

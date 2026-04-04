@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Play, ChevronDown, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useDemoMode } from "@/hooks/useDemoMode";
+import { callEdgeApi } from "@/lib/edge-call";
+import { buildDemoMcpResponse } from "@/lib/demo-data";
 import { getErrorMessage } from "@/lib/error-utils";
-import { getAppConfig } from "@/lib/env";
 
 type McpMethod = "initialize" | "tools/list" | "tools/call";
 type JsonRpcRequest = {
@@ -20,6 +22,7 @@ const METHODS: { value: McpMethod; label: string; description: string }[] = [
 
 export default function McpTestPanel({ endpoint }: { endpoint: string }) {
   const { getAccessToken } = useAuth();
+  const demo = useDemoMode();
   const [method, setMethod] = useState<McpMethod>("initialize");
   const [toolName, setToolName] = useState("");
   const [toolParams, setToolParams] = useState("{}");
@@ -33,30 +36,29 @@ export default function McpTestPanel({ endpoint }: { endpoint: string }) {
     setStatusCode(null);
 
     try {
-      const token = await getAccessToken();
+      if (demo) {
+        const data = buildDemoMcpResponse(method);
+        setStatusCode(200);
+        setResponse(JSON.stringify(data, null, 2));
+      } else {
+        const body: JsonRpcRequest = { jsonrpc: "2.0", id: 1, method, params: {} };
+        if (method === "tools/call") {
+          body.params = {
+            name: toolName,
+            arguments: JSON.parse(toolParams || "{}"),
+          };
+        }
 
-      const body: JsonRpcRequest = { jsonrpc: "2.0", id: 1, method, params: {} };
-      if (method === "tools/call") {
-        body.params = {
-          name: toolName,
-          arguments: JSON.parse(toolParams || "{}"),
-        };
+        const data = await callEdgeApi(getAccessToken, {
+          url: endpoint,
+          body: body as unknown as Record<string, unknown>,
+          includeApiKey: true,
+          extraHeaders: { Accept: "application/json" },
+        });
+
+        setStatusCode(200);
+        setResponse(JSON.stringify(data, null, 2));
       }
-
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: `Bearer ${token}`,
-          apikey: getAppConfig().supabasePublishableKey,
-        },
-        body: JSON.stringify(body),
-      });
-
-      const data = await res.json();
-      setStatusCode(res.status);
-      setResponse(JSON.stringify(data, null, 2));
     } catch (error: unknown) {
       setResponse(JSON.stringify({ error: getErrorMessage(error) }, null, 2));
       setStatusCode(0);

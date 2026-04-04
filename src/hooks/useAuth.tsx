@@ -211,12 +211,17 @@ function Auth0ProviderWithRouter({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const hasAudience = Boolean(config.auth0Audience);
+  const scope = hasAudience
+    ? config.auth0Scope
+    : config.auth0Scope?.replace(/\boffline_access\b/g, "").replace(/\s+/g, " ").trim();
+
   return (
     <Auth0Provider
       authorizationParams={{
-        audience: config.auth0Audience,
+        ...(hasAudience ? { audience: config.auth0Audience } : {}),
         redirect_uri: window.location.origin,
-        scope: config.auth0Scope,
+        ...(scope ? { scope } : {}),
       }}
       cacheLocation="localstorage"
       clientId={config.auth0ClientId}
@@ -224,7 +229,7 @@ function Auth0ProviderWithRouter({ children }: { children: ReactNode }) {
       onRedirectCallback={(appState?: AppState) => {
         navigate(appState?.returnTo || location.pathname || "/dashboard", { replace: true });
       }}
-      useRefreshTokens
+      useRefreshTokens={hasAudience}
     >
       <AuthBridge config={config}>{children}</AuthBridge>
     </Auth0Provider>

@@ -12,10 +12,12 @@ import {
 } from "@auth0/auth0-react";
 import {
   createContext,
+  useCallback,
   useContext,
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -84,13 +86,6 @@ interface AuthContextType {
   user: AuthUser | null;
 }
 
-/**
- * Auth0 can briefly flip `isAuthenticated` during silent token work. Clearing the Supabase
- * JWT getter immediately makes `functions.invoke` (e.g. mission-approve) use the anon key → 401
- * and triggers route guards that send users back to /auth.
- */
-const SUPABASE_JWT_CLEAR_DELAY_MS = 1400;
-
 const AuthContext = createContext<AuthContextType>({
   getAccessToken: async (_options?: GetTokenSilentlyOptions) => {
     throw new Error("Authentication is not configured");
@@ -137,42 +132,75 @@ function AuthBridge({
   config: AppConfig;
 }) {
   const {
+    error: auth0Error,
     getAccessTokenSilently,
-    isAuthenticated,
-    isLoading,
+    isAuthenticated: rawIsAuthenticated,
+    isLoading: rawIsLoading,
     loginWithRedirect,
     logout,
     user: auth0User,
   } = useAuth0();
   const user = useMemo(() => mapAuth0User(auth0User), [auth0User]);
+
+  // Track whether we were ever authenticated in this browser tab.
+  // Auth0 can flip isAuthenticated to false during silent token renewal (ITP, popup blockers, etc.)
+  // and we must NOT treat that as "logged out" — it's a transient state.
+  const [wasAuthenticated, setWasAuthenticated] = useState(false);
+  if (rawIsAuthenticated && !wasAuthenticated) {
+    setWasAuthenticated(true);
+  }
+
+  // If Auth0 SDK says loading is done but isAuthenticated is false while
+  // we were previously authed, keep reporting "loading" to prevent route guards from
+  // kicking the user to /auth. Only clear once we detect a real logout (explicit signOut)
+  // or an unrecoverable Auth0 error.
+  const isRealLogout = useRef(false);
+
+  const isTransientDrop = !rawIsLoading && !rawIsAuthenticated && wasAuthenticated && !isRealLogout.current;
+
+  const isAuthenticated = rawIsAuthenticated || isTransientDrop;
+  const isLoading = rawIsLoading || isTransientDrop;
+
+  // Keep a stable ref so the Supabase getter always calls the latest SDK function.
   const getTokenRef = useRef(getAccessTokenSilently);
   getTokenRef.current = getAccessTokenSilently;
 
+  // Resilient token getter: if the normal call throws login_required, retry with cache off
+  // before giving up. This prevents a single silent-refresh failure from nuking the session.
+  const resilientGetToken = useCallback(async (options?: GetTokenSilentlyOptions): Promise<string> => {
+    try {
+      return await getTokenRef.current(options ?? {});
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (/login.required|login_required|consent.required/i.test(msg) && !options?.cacheMode) {
+        return getTokenRef.current({ cacheMode: "off" });
+      }
+      throw err;
+    }
+  }, []);
+
+  // Always keep the Supabase JWT getter registered while we consider the user authenticated.
+  // Only null it out on real logout or unmount.
   useLayoutEffect(() => {
-    const getter = async () => getTokenRef.current();
-
     if (isAuthenticated) {
-      setSupabaseAccessTokenGetter(getter);
-      return;
-    }
-
-    if (isLoading) {
-      return;
-    }
-
-    const t = window.setTimeout(() => {
+      setSupabaseAccessTokenGetter(() => resilientGetToken());
+    } else if (!rawIsLoading) {
       setSupabaseAccessTokenGetter(null);
-    }, SUPABASE_JWT_CLEAR_DELAY_MS);
-    return () => window.clearTimeout(t);
-  }, [isAuthenticated, isLoading]);
+    }
+  }, [isAuthenticated, rawIsLoading, resilientGetToken]);
 
   useLayoutEffect(() => {
     return () => setSupabaseAccessTokenGetter(null);
   }, []);
 
+  // If Auth0 gives us an actual error (not just transient), log it but don't auto-redirect.
+  // The user can click "Continue with Auth0" on the auth page to resolve it.
+  if (auth0Error) {
+    console.warn("[Tether AuthBridge] Auth0 error:", auth0Error.message);
+  }
+
   const value = useMemo<AuthContextType>(() => ({
-    getAccessToken: async (options?: GetTokenSilentlyOptions) =>
-      getAccessTokenSilently(options ?? {}),
+    getAccessToken: resilientGetToken,
     isAuthenticated,
     loading: isLoading,
     login: async ({ returnTo, screenHint } = {}) => {
@@ -204,6 +232,8 @@ function AuthBridge({
       }
     },
     signOut: async () => {
+      isRealLogout.current = true;
+      setWasAuthenticated(false);
       await logout({
         logoutParams: {
           returnTo: window.location.origin,
@@ -215,11 +245,11 @@ function AuthBridge({
     config.auth0ClientId,
     config.auth0DatabaseConnection,
     config.auth0Domain,
-    getAccessTokenSilently,
     isAuthenticated,
     isLoading,
     loginWithRedirect,
     logout,
+    resilientGetToken,
     user,
   ]);
 

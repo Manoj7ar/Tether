@@ -16,12 +16,9 @@ export default function Auth() {
   const state = location.state as { returnTo?: string } | null;
 
   useEffect(() => {
-    if (authLoading || !isAuthenticated || !user?.sub) return;
-    const t = window.setTimeout(() => {
-      navigate(state?.returnTo ?? "/dashboard", { replace: true });
-    }, 400);
-    return () => window.clearTimeout(t);
-  }, [authLoading, isAuthenticated, user?.sub, navigate, state?.returnTo]);
+    if (authLoading || !isAuthenticated) return;
+    navigate(state?.returnTo ?? "/dashboard", { replace: true });
+  }, [authLoading, isAuthenticated, navigate, state?.returnTo]);
 
   const handleAuth = async (screenHint?: "signup") => {
     setLoading(true);

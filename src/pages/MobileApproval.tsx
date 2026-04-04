@@ -10,7 +10,6 @@ import { toast } from "@/hooks/use-toast";
 import { getErrorMessage } from "@/lib/error-utils";
 import StepUpVerificationPanel from "@/components/security/StepUpVerificationPanel";
 import { useMissionStepUpGate } from "@/hooks/useStepUp";
-import { AUTH_UNAUTH_STABLE_MS } from "@/lib/auth-session";
 
 interface MissionManifest {
   intentVerification?: { reasoning: string; verdict: "passed" | "warning" | "failed" };
@@ -90,17 +89,11 @@ export default function MobileApproval() {
     pendingMission?.id,
     permissions,
   );
-  const [screenState, setScreenState] = useState<ScreenState>("waiting");
 
-  // Same debounce as ProtectedRoute: Auth0 can briefly report logged out during silent refresh.
   useEffect(() => {
-    if (authLoading || isAuthenticated) {
-      return;
-    }
-    const t = window.setTimeout(() => {
+    if (!authLoading && !isAuthenticated) {
       navigate("/auth", { replace: true, state: { returnTo: "/approve" } });
-    }, AUTH_UNAUTH_STABLE_MS);
-    return () => window.clearTimeout(t);
+    }
   }, [authLoading, isAuthenticated, navigate]);
   // Sync screen state with data
   useEffect(() => {
@@ -149,20 +142,8 @@ export default function MobileApproval() {
     );
   }
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6">
-        <p className="text-sm text-muted-foreground text-center">Checking session…</p>
-      </div>
-    );
-  }
-
-  if (!user?.sub) {
-    return (
-      <div className="min-h-screen bg-background flex items-center justify-center px-6">
-        <p className="text-sm text-muted-foreground text-center">Loading profile…</p>
-      </div>
-    );
+  if (!user) {
+    return null;
   }
 
   if (screenState === "approved") {

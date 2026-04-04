@@ -1,6 +1,8 @@
 import type { GetTokenSilentlyOptions } from "@auth0/auth0-spa-js";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { edgeFunctionErrorMessage } from "@/lib/supabase-functions";
 import type { Tables } from "@/integrations/supabase/types";
 
 export type Mission = Tables<"missions">;
@@ -167,6 +169,8 @@ export function useConnectedAccounts() {
   });
 }
 
+const CREATE_FN_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-mission`;
+
 export function useCreateMission() {
   const queryClient = useQueryClient();
   const { getAccessToken } = useAuth();
@@ -180,13 +184,38 @@ export function useCreateMission() {
       intent_audit?: Record<string, unknown>;
       permissions?: { provider: string; scope: string; action_type: string; reason?: string }[];
     }) => {
-      const { permissions, ...rest } = input;
-      const data = await callMissionsApi(getAccessToken, {
-        action: "create",
-        mission: rest,
-        permissions,
+      let token: string;
+      try {
+        token = await withTimeout(getAccessToken(), TOKEN_TIMEOUT_MS, "Session expired.");
+      } catch (e) {
+        if (isLoginRequired(e)) {
+          token = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
+        } else { throw e; }
+      }
+
+      const res = await fetch(CREATE_FN_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(input),
       });
-      return data as Mission;
+      const json = await res.json().catch(() => null);
+
+      if (res.status === 401) {
+        const fresh = await withTimeout(getAccessToken({ cacheMode: "off" }), TOKEN_TIMEOUT_MS, "Session expired.");
+        const retry = await fetch(CREATE_FN_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${fresh}` },
+          body: JSON.stringify(input),
+        });
+        const retryJson = await retry.json().catch(() => null);
+        if (!retry.ok) throw new Error(retryJson?.error || `Server error (${retry.status})`);
+        if (retryJson?.error) throw new Error(retryJson.error);
+        return retryJson.data as Mission;
+      }
+
+      if (!res.ok) throw new Error(json?.error || `Server error (${res.status})`);
+      if (json?.error) throw new Error(json.error);
+      return json.data as Mission;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });

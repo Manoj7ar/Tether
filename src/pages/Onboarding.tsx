@@ -51,7 +51,12 @@ export default function Onboarding() {
       toast({ title: "You're all set", description: "Welcome to Tether." });
       navigate("/dashboard", { replace: true });
     } catch (error: unknown) {
-      toast({ title: "Error", description: getErrorMessage(error), variant: "destructive" });
+      const msg = getErrorMessage(error);
+      if (/login.required|login_required/i.test(msg)) {
+        navigate("/auth", { replace: true, state: { returnTo: "/onboarding" } });
+        return;
+      }
+      toast({ title: "Error", description: msg, variant: "destructive" });
     }
   };
 

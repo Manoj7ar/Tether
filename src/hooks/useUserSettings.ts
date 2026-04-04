@@ -58,17 +58,37 @@ function isAuthLikeInvokeFailure(error: unknown, message: string): boolean {
   return false;
 }
 
+function isLoginRequiredError(err: unknown): boolean {
+  if (err instanceof Error) {
+    return /login.required|login_required|consent.required/i.test(err.message);
+  }
+  return false;
+}
+
 /** One retry with a fresh Auth0 access token when Edge rejects the cached token. */
 async function invokeUserSettings(
   getAccessToken: (options?: GetTokenSilentlyOptions) => Promise<string>,
   opts: { method: "GET" | "POST"; body?: object },
 ): Promise<unknown> {
   const run = async (forceRefresh: boolean) => {
-    const token = await withTimeout(
-      getAccessToken(forceRefresh ? { cacheMode: "off" } : {}),
-      ACCESS_TOKEN_TIMEOUT_MS,
-      "Could not refresh your session in time. Try signing out and back in.",
-    );
+    let token: string;
+    try {
+      token = await withTimeout(
+        getAccessToken(forceRefresh ? { cacheMode: "off" } : {}),
+        ACCESS_TOKEN_TIMEOUT_MS,
+        "Could not refresh your session in time. Try signing out and back in.",
+      );
+    } catch (tokenErr) {
+      if (!forceRefresh && isLoginRequiredError(tokenErr)) {
+        token = await withTimeout(
+          getAccessToken({ cacheMode: "off" }),
+          ACCESS_TOKEN_TIMEOUT_MS,
+          "Could not refresh your session in time. Try signing out and back in.",
+        );
+      } else {
+        throw tokenErr;
+      }
+    }
     return supabase.functions.invoke("user-settings", {
       method: opts.method,
       headers: { Authorization: `Bearer ${token}` },

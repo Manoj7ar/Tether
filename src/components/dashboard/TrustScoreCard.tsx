@@ -5,13 +5,7 @@ import { Shield } from "lucide-react";
 export default function TrustScoreCard() {
   const { data, isLoading } = useTrustScore();
 
-  if (isLoading || !data) {
-    return (
-      <div className="card-tether p-5 animate-pulse">
-        <div className="h-24 bg-muted rounded" />
-      </div>
-    );
-  }
+  if (isLoading || !data) return null;
 
   const { score, total_allowed, total_blocked, history } = data;
 

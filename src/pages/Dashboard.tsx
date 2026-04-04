@@ -11,9 +11,16 @@ import TrustScoreCard from "@/components/dashboard/TrustScoreCard";
 import NudgeCards from "@/components/dashboard/NudgeCards";
 import AmbientBudgetCard from "@/components/dashboard/AmbientBudgetCard";
 import { formatDistanceToNow, format } from "date-fns";
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { getEdgeFunctionUrl } from "@/lib/env";
+
+function CollapseEmpty({ children, className }: { children: ReactNode; className?: string }) {
+  const arr = Array.isArray(children) ? children : [children];
+  const hasContent = arr.some((c) => c != null && c !== false);
+  if (!hasContent) return null;
+  return <div className={className}>{children}</div>;
+}
 
 const statusStyles: Record<string, string> = {
   pending: "bg-accent text-accent-foreground animate-pulse-status",
@@ -67,11 +74,11 @@ export default function Dashboard() {
     <div className="flex h-full">
       {/* Main */}
       <div className="flex-1 p-4 sm:p-6 lg:p-8 space-y-8">
-        {/* Trust Score + Ambient Budget */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Trust Score + Ambient Budget — collapses when both return null */}
+        <CollapseEmpty className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <TrustScoreCard />
           <AmbientBudgetCard />
-        </div>
+        </CollapseEmpty>
 
         {/* Behavioral Nudges */}
         <NudgeCards />

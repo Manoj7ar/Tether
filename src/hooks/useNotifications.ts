@@ -1,6 +1,7 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { getAppConfig, getSupabaseFunctionsBaseUrl } from "@/lib/env";
 import type { Mission } from "@/hooks/useMissions";
 
 export function useNotificationPermission() {
@@ -59,4 +60,76 @@ export function useMissionNotifications() {
       supabase.removeChannel(channel);
     };
   }, [user]);
+}
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+/**
+ * Subscribes the browser to Web Push after notification permission is granted.
+ * Sends the subscription to the push-subscribe Edge Function.
+ * Safe to call on every render — only subscribes once.
+ */
+export function usePushSubscription() {
+  const { user, getAccessToken, isAuthenticated } = useAuth();
+  const subscribedRef = useRef(false);
+  const [subscribed, setSubscribed] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) return;
+    if (subscribedRef.current) return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    if (Notification.permission !== "granted") return;
+
+    const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
+    if (!vapidKey) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        let sub = await registration.pushManager.getSubscription();
+
+        if (!sub) {
+          sub = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidKey),
+          });
+        }
+
+        if (cancelled) return;
+
+        const token = await getAccessToken();
+        const res = await fetch(`${getSupabaseFunctionsBaseUrl()}/push-subscribe`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+            apikey: getAppConfig().supabasePublishableKey,
+          },
+          body: JSON.stringify({ subscription: sub.toJSON() }),
+        });
+
+        if (res.ok) {
+          subscribedRef.current = true;
+          if (!cancelled) setSubscribed(true);
+        } else {
+          console.error("push-subscribe failed:", res.status, await res.text());
+        }
+      } catch (e) {
+        console.error("Push subscription error:", e);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isAuthenticated, user, getAccessToken]);
+
+  return { subscribed };
 }

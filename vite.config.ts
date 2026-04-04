@@ -15,6 +15,9 @@ export default defineConfig(() => ({
   plugins: [
     react(),
     VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "robots.txt"],
       manifest: {
@@ -41,8 +44,7 @@ export default defineConfig(() => ({
           },
         ],
       },
-      workbox: {
-        navigateFallbackDenylist: [/^\/~oauth/],
+      injectManifest: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg,jpg,jpeg,woff2}"],
       },
     }),

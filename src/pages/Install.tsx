@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Bell, Download, Smartphone, Check, Shield } from "lucide-react";
-import { useNotificationPermission } from "@/hooks/useNotifications";
+import { Bell, Download, Smartphone, Check, Shield, Wifi } from "lucide-react";
+import { useNotificationPermission, usePushSubscription } from "@/hooks/useNotifications";
 import TetherLogo from "@/components/layout/TetherLogo";
 
 interface BeforeInstallPromptEvent extends Event {
@@ -10,6 +10,7 @@ interface BeforeInstallPromptEvent extends Event {
 
 export default function Install() {
   const { supported, permission, requestPermission } = useNotificationPermission();
+  const { subscribed: pushSubscribed } = usePushSubscription();
   const [notifStatus, setNotifStatus] = useState(permission);
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
@@ -113,6 +114,34 @@ export default function Install() {
                 <button onClick={handleEnableNotifications} className="btn-glass-primary px-5 py-2.5 text-sm flex items-center gap-2">
                   <Bell className="h-4 w-4" /> Enable Notifications
                 </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Step 3: Push status */}
+        <div className="card-tether p-6">
+          <div className="flex items-start gap-4">
+            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+              <Wifi className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h3 className="font-medium text-foreground mb-1">Step 3: Push Subscription</h3>
+              <p className="text-xs text-muted-foreground mb-3">
+                Receive notifications even when the app is closed.
+              </p>
+              {pushSubscribed ? (
+                <span className="text-sm text-primary flex items-center gap-2">
+                  <Check className="h-4 w-4" /> Push active on this device
+                </span>
+              ) : notifStatus === "granted" ? (
+                <span className="text-xs text-muted-foreground italic">
+                  Subscribing to push...
+                </span>
+              ) : (
+                <span className="text-xs text-muted-foreground italic">
+                  Enable notifications first (Step 2)
+                </span>
               )}
             </div>
           </div>

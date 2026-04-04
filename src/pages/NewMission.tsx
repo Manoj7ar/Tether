@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Textarea } from "@/components/ui/textarea";
 import MissionManifestCard from "@/components/mission/MissionManifestCard";
 import { useCreateMission } from "@/hooks/useMissions";
+import { useUserSettings } from "@/hooks/useUserSettings";
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import MissionTemplates, { MissionTemplate } from "@/components/mission/MissionTemplates";
@@ -33,6 +34,8 @@ export default function NewMission() {
   const navigate = useNavigate();
   const location = useLocation();
   const createMission = useCreateMission();
+  const { data: settings } = useUserSettings();
+  const isDemoMode = settings?.demo_mode ?? false;
 
   // Pre-fill from navigation state (Quick Launch on Dashboard)
   useEffect(() => {
@@ -61,6 +64,31 @@ export default function NewMission() {
 
   const handleRequestApproval = async () => {
     if (!manifest) return;
+
+    if (isDemoMode) {
+      const fakeId = crypto.randomUUID();
+      const fakeTetherNum = String(Math.floor(Math.random() * 900) + 100);
+      const fakeMission = {
+        id: fakeId,
+        tether_number: Number(fakeTetherNum),
+        objective: manifest.objective,
+        status: "pending" as const,
+        time_limit_mins: timeLimit,
+        risk_level: manifest.riskLevel,
+        manifest_json: manifest as unknown as Record<string, unknown>,
+        created_at: new Date().toISOString(),
+        user_id: "demo",
+      };
+
+      sessionStorage.setItem(`demo_mission_${fakeId}`, JSON.stringify(fakeMission));
+
+      toast({
+        title: "Mission created",
+        description: `Tether #${fakeTetherNum} is pending approval.`,
+      });
+      navigate(`/mission/${fakeId}`);
+      return;
+    }
 
     try {
       const mission = await createMission.mutateAsync({

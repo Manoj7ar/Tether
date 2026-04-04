@@ -107,6 +107,10 @@ export function useMission(id: string | undefined) {
   return useQuery({
     queryKey: ["mission", id],
     queryFn: async () => {
+      const stored = id ? sessionStorage.getItem(`demo_mission_${id}`) : null;
+      if (stored) {
+        return JSON.parse(stored) as Mission;
+      }
       const data = await callMissionsApi(getAccessToken, { action: "get", id });
       return (data as Mission) ?? null;
     },

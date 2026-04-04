@@ -1,12 +1,8 @@
 /**
- * Missions CRUD Edge Function.
- *
- * Uses a lightweight auth approach (Auth0 /userinfo) to avoid importing
- * the heavy jose library, keeping memory usage low.
+ * Missions CRUD — zero-dependency Edge Function.
+ * Uses raw fetch against the PostgREST API instead of the Supabase JS
+ * client to stay well under the Edge Function memory limit.
  */
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
@@ -14,104 +10,114 @@ const CORS: Record<string, string> = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-function json(body: unknown, status = 200) {
+function jsonRes(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
     headers: { ...CORS, "Content-Type": "application/json" },
   });
 }
 
-function env(name: string): string {
-  const v = Deno.env.get(name);
-  if (!v) throw Object.assign(new Error(`${name} not configured`), { status: 503 });
+function env(n: string): string {
+  const v = Deno.env.get(n);
+  if (!v) throw { message: `${n} not configured`, status: 503 };
   return v;
 }
 
-async function authenticateRequest(req: Request): Promise<string> {
-  const hdr = req.headers.get("Authorization");
-  if (!hdr?.startsWith("Bearer ")) {
-    throw Object.assign(new Error("Unauthorized"), { status: 401 });
-  }
-
-  const token = hdr.slice(7);
+async function auth(req: Request): Promise<string> {
+  const h = req.headers.get("Authorization");
+  if (!h?.startsWith("Bearer ")) throw { message: "Unauthorized", status: 401 };
   const domain = env("AUTH0_DOMAIN").replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+  const r = await fetch(`https://${domain}/userinfo`, { headers: { Authorization: h } });
+  if (!r.ok) throw { message: "Invalid or expired session", status: 401 };
+  const p = await r.json();
+  if (!p.sub) throw { message: "No user ID", status: 401 };
+  return p.sub as string;
+}
 
-  const res = await fetch(`https://${domain}/userinfo`, {
-    headers: { Authorization: `Bearer ${token}` },
+type PgResult = Record<string, unknown>[];
+
+async function pg(
+  method: string,
+  table: string,
+  opts: {
+    query?: string;
+    body?: unknown;
+    single?: boolean;
+    prefer?: string;
+  } = {},
+): Promise<{ data: unknown; error: string | null }> {
+  const url = `${env("SUPABASE_URL")}/rest/v1/${table}${opts.query ? `?${opts.query}` : ""}`;
+  const headers: Record<string, string> = {
+    apikey: env("SUPABASE_SERVICE_ROLE_KEY"),
+    Authorization: `Bearer ${env("SUPABASE_SERVICE_ROLE_KEY")}`,
+    "Content-Type": "application/json",
+  };
+  if (opts.prefer) headers["Prefer"] = opts.prefer;
+  if (opts.single) headers["Accept"] = "application/vnd.pgrst.object+json";
+  else headers["Accept"] = "application/json";
+
+  const res = await fetch(url, {
+    method,
+    headers,
+    ...(opts.body !== undefined ? { body: JSON.stringify(opts.body) } : {}),
   });
 
   if (!res.ok) {
-    throw Object.assign(new Error("Invalid or expired session"), { status: 401 });
+    const err = await res.json().catch(() => ({ message: res.statusText }));
+    return { data: null, error: (err as { message?: string }).message || res.statusText };
   }
 
-  const profile = await res.json();
-  if (!profile.sub) {
-    throw Object.assign(new Error("Auth0 did not return a user ID"), { status: 401 });
-  }
-
-  return profile.sub as string;
+  if (res.status === 204) return { data: null, error: null };
+  const data = await res.json();
+  return { data, error: null };
 }
 
-serve(async (req: Request) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: CORS });
-  }
+function qs(params: Record<string, string>): string {
+  return Object.entries(params).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
+}
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
   try {
-    const userId = await authenticateRequest(req);
-    const db = createClient(env("SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
-
-    const rawText = await req.text();
+    const userId = await auth(req);
+    const raw = await req.text();
     let body: Record<string, unknown>;
-    try {
-      body = JSON.parse(rawText);
-    } catch {
-      return json({ error: "Invalid request body" }, 400);
-    }
+    try { body = JSON.parse(raw); } catch { return jsonRes({ error: "Invalid body" }, 400); }
     const action = body.action as string;
 
     switch (action) {
       case "list": {
-        let q = db
-          .from("missions")
-          .select("*")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false });
-        if (body.statusFilter && body.statusFilter !== "all") {
-          q = q.eq("status", body.statusFilter);
-        }
-        const { data, error } = await q;
-        if (error) throw error;
-        return json({ data });
+        const f = body.statusFilter && body.statusFilter !== "all" ? `&status=eq.${body.statusFilter}` : "";
+        const { data, error } = await pg("GET", "missions", {
+          query: `user_id=eq.${userId}&order=created_at.desc${f}&select=*`,
+        });
+        if (error) throw { message: error, status: 500 };
+        return jsonRes({ data });
       }
 
       case "list_active": {
-        const { data, error } = await db
-          .from("missions")
-          .select("*")
-          .eq("user_id", userId)
-          .in("status", ["active", "pending"])
-          .order("created_at", { ascending: false });
-        if (error) throw error;
-        return json({ data });
+        const { data, error } = await pg("GET", "missions", {
+          query: `user_id=eq.${userId}&status=in.(active,pending)&order=created_at.desc&select=*`,
+        });
+        if (error) throw { message: error, status: 500 };
+        return jsonRes({ data });
       }
 
       case "get": {
-        const { data, error } = await db
-          .from("missions")
-          .select("*")
-          .eq("id", body.id)
-          .eq("user_id", userId)
-          .maybeSingle();
-        if (error) throw error;
-        return json({ data });
+        const { data, error } = await pg("GET", "missions", {
+          query: `id=eq.${body.id}&user_id=eq.${userId}&select=*`,
+          single: true,
+        });
+        if (error) throw { message: error, status: 500 };
+        return jsonRes({ data });
       }
 
       case "create": {
         const m = body.mission as Record<string, unknown>;
-        const { data: mission, error } = await db
-          .from("missions")
-          .insert({
+        const { data: mission, error } = await pg("POST", "missions", {
+          query: "select=*",
+          body: {
             objective: m.objective,
             time_limit_mins: m.time_limit_mins,
             manifest_json: m.manifest_json ?? null,
@@ -119,28 +125,30 @@ serve(async (req: Request) => {
             intent_audit: m.intent_audit ?? null,
             user_id: userId,
             status: "pending",
-          })
-          .select()
-          .single();
-        if (error) throw error;
+          },
+          single: true,
+          prefer: "return=representation",
+        });
+        if (error) throw { message: error, status: 500 };
 
-        if (Array.isArray(body.permissions) && body.permissions.length > 0) {
-          const perms = body.permissions as { provider: string; scope: string; action_type: string; reason?: string }[];
-          const { error: permErr } = await db
-            .from("mission_permissions")
-            .insert(perms.map((p) => ({
-              mission_id: mission.id,
+        const perms = body.permissions as { provider: string; scope: string; action_type: string; reason?: string }[] | undefined;
+        if (Array.isArray(perms) && perms.length > 0) {
+          const missionObj = mission as { id: string };
+          await pg("POST", "mission_permissions", {
+            body: perms.map((p) => ({
+              mission_id: missionObj.id,
               provider: p.provider,
               scope: p.scope,
               action_type: p.action_type,
               reason: p.reason ?? null,
-            })));
-          if (permErr) throw permErr;
+            })),
+            prefer: "return=minimal",
+          });
         }
 
-        const tetherNum = String(mission.tether_number).padStart(3, "0");
-        const pushUrl = `${env("SUPABASE_URL")}/functions/v1/send-push`;
-        fetch(pushUrl, {
+        const mObj = mission as { id: string; tether_number: number; objective: string };
+        const tetherNum = String(mObj.tether_number).padStart(3, "0");
+        fetch(`${env("SUPABASE_URL")}/functions/v1/send-push`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -148,132 +156,107 @@ serve(async (req: Request) => {
           },
           body: JSON.stringify({
             user_id: userId,
-            mission_id: mission.id,
+            mission_id: mObj.id,
             title: `Tether #${tetherNum} — Approval Required`,
-            body: ((mission.objective as string) ?? "A new mission needs your approval.").slice(0, 120),
+            body: (mObj.objective ?? "A new mission needs your approval.").slice(0, 120),
           }),
-        }).catch((e: unknown) => console.error("send-push fire-and-forget failed:", e));
+        }).catch(() => {});
 
-        return json({ data: mission });
+        return jsonRes({ data: mission });
       }
 
       case "update": {
-        const { data, error } = await db
-          .from("missions")
-          .update(body.updates as Record<string, unknown>)
-          .eq("id", body.id)
-          .eq("user_id", userId)
-          .select()
-          .single();
-        if (error) throw error;
-        return json({ data });
+        const { data, error } = await pg("PATCH", "missions", {
+          query: `id=eq.${body.id}&user_id=eq.${userId}&select=*`,
+          body: body.updates,
+          single: true,
+          prefer: "return=representation",
+        });
+        if (error) throw { message: error, status: 500 };
+        return jsonRes({ data });
       }
 
       case "get_pending": {
-        if (body.id) {
-          const { data, error } = await db
-            .from("missions")
-            .select("*")
-            .eq("id", body.id)
-            .eq("user_id", userId)
-            .eq("status", "pending")
-            .maybeSingle();
-          if (error) throw error;
-          return json({ data });
-        }
-        const { data, error } = await db
-          .from("missions")
-          .select("*")
-          .eq("user_id", userId)
-          .eq("status", "pending")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        if (error) throw error;
-        return json({ data });
+        const idFilter = body.id ? `id=eq.${body.id}&` : "";
+        const { data, error } = await pg("GET", "missions", {
+          query: `${idFilter}user_id=eq.${userId}&status=eq.pending&order=created_at.desc&limit=1&select=*`,
+          single: true,
+        });
+        if (error && !error.includes("JSON object requested")) throw { message: error, status: 500 };
+        return jsonRes({ data: data ?? null });
       }
 
       case "list_permissions": {
-        const { data, error } = await db
-          .from("mission_permissions")
-          .select("*")
-          .eq("mission_id", body.mission_id);
-        if (error) throw error;
-        return json({ data });
+        const { data, error } = await pg("GET", "mission_permissions", {
+          query: `mission_id=eq.${body.mission_id}&select=*`,
+        });
+        if (error) throw { message: error, status: 500 };
+        return jsonRes({ data });
       }
 
       case "list_execution_log": {
-        let q = db
-          .from("execution_log")
-          .select("*")
-          .eq("user_id", userId)
-          .order("timestamp", { ascending: false })
-          .limit((body.limit as number) ?? 100);
-        if (body.mission_id) {
-          q = q.eq("mission_id", body.mission_id);
-        }
-        const { data, error } = await q;
-        if (error) throw error;
-        return json({ data });
+        const mf = body.mission_id ? `&mission_id=eq.${body.mission_id}` : "";
+        const { data, error } = await pg("GET", "execution_log", {
+          query: `user_id=eq.${userId}&order=timestamp.desc&limit=${body.limit ?? 100}${mf}&select=*`,
+        });
+        if (error) throw { message: error, status: 500 };
+        return jsonRes({ data });
       }
 
       case "insert_execution_log": {
         const entry = body.entry as Record<string, unknown>;
-        const { data, error } = await db
-          .from("execution_log")
-          .insert({ ...entry, user_id: userId })
-          .select()
-          .single();
-        if (error) throw error;
-        return json({ data });
+        const { data, error } = await pg("POST", "execution_log", {
+          query: "select=*",
+          body: { ...entry, user_id: userId },
+          single: true,
+          prefer: "return=representation",
+        });
+        if (error) throw { message: error, status: 500 };
+        return jsonRes({ data });
       }
 
       case "list_connected_accounts": {
-        const { data, error } = await db
-          .from("connected_accounts")
-          .select("id, provider, provider_username, scopes, connected_at, is_active, user_id")
-          .eq("user_id", userId)
-          .order("connected_at", { ascending: false });
-        if (error) throw error;
-        return json({ data });
+        const { data, error } = await pg("GET", "connected_accounts", {
+          query: `user_id=eq.${userId}&order=connected_at.desc&select=id,provider,provider_username,scopes,connected_at,is_active,user_id`,
+        });
+        if (error) throw { message: error, status: 500 };
+        return jsonRes({ data });
       }
 
       case "mission_stats": {
         const [mRes, lRes] = await Promise.all([
-          db.from("missions").select("id, status").eq("user_id", userId),
-          db.from("execution_log").select("id, status").eq("user_id", userId),
+          pg("GET", "missions", { query: `user_id=eq.${userId}&select=id,status` }),
+          pg("GET", "execution_log", { query: `user_id=eq.${userId}&select=id,status` }),
         ]);
-        if (mRes.error) throw mRes.error;
-        if (lRes.error) throw lRes.error;
-        const missions = mRes.data ?? [];
-        const logs = lRes.data ?? [];
-        return json({
+        if (mRes.error) throw { message: mRes.error, status: 500 };
+        if (lRes.error) throw { message: lRes.error, status: 500 };
+        const missions = (mRes.data ?? []) as PgResult;
+        const logs = (lRes.data ?? []) as PgResult;
+        return jsonRes({
           data: {
             totalMissions: missions.length,
-            actionsApproved: logs.filter((l: { status: string }) => l.status === "allowed").length,
-            actionsBlocked: logs.filter((l: { status: string }) => l.status === "blocked").length,
+            actionsApproved: logs.filter((l) => l.status === "allowed").length,
+            actionsBlocked: logs.filter((l) => l.status === "blocked").length,
           },
         });
       }
 
       case "analytics": {
         const [mRes, lRes] = await Promise.all([
-          db.from("missions").select("id, status, risk_level, created_at").eq("user_id", userId),
-          db.from("execution_log").select("id, status, timestamp").eq("user_id", userId),
+          pg("GET", "missions", { query: `user_id=eq.${userId}&select=id,status,risk_level,created_at` }),
+          pg("GET", "execution_log", { query: `user_id=eq.${userId}&select=id,status,timestamp` }),
         ]);
-        if (mRes.error) throw mRes.error;
-        if (lRes.error) throw lRes.error;
-        return json({ data: { missions: mRes.data ?? [], logs: lRes.data ?? [] } });
+        if (mRes.error) throw { message: mRes.error, status: 500 };
+        if (lRes.error) throw { message: lRes.error, status: 500 };
+        return jsonRes({ data: { missions: mRes.data ?? [], logs: lRes.data ?? [] } });
       }
 
       default:
-        return json({ error: `Unknown action: ${action}` }, 400);
+        return jsonRes({ error: `Unknown action: ${action}` }, 400);
     }
   } catch (err) {
-    const errObj = err as { message?: string; status?: number };
-    const message = errObj.message || "Internal error";
-    const status = errObj.status ?? 500;
-    if (status >= 500) console.error("missions-api error:", message);
-    return json({ error: message }, status);
+    const e = err as { message?: string; status?: number };
+    if ((e.status ?? 500) >= 500) console.error("missions-api:", e.message);
+    return jsonRes({ error: e.message || "Internal error" }, e.status ?? 500);
   }
 });

@@ -161,6 +161,20 @@ function AuthBridge({
   const getTokenRef = useRef(getAccessTokenSilently);
   getTokenRef.current = getAccessTokenSilently;
 
+  // Detect persistent session expiry. We do NOT react to transient
+  // rawIsAuthenticated flickers — those happen during normal silent-auth
+  // refreshes and cause false positives. Instead, sessionExpired is set
+  // only when a real token acquisition attempt fails hard.
+  const [sessionExpired, setSessionExpired] = useState(false);
+  const sessionExpiredRef = useRef(false);
+
+  // Must be declared before resilientGetToken (that callback references it in deps and body).
+  const markSessionExpired = useCallback((expired: boolean) => {
+    if (sessionExpiredRef.current === expired) return;
+    sessionExpiredRef.current = expired;
+    setSessionExpired(expired);
+  }, []);
+
   // Resilient token getter: retries with cache off on login_required.
   // Never triggers loginWithRedirect — callers surface errors to the user
   // and the SessionExpiredBanner prompts a manual re-login.
@@ -198,20 +212,6 @@ function AuthBridge({
   // Derive stable isAuthenticated / loading:
   const isAuthenticated = rawIsAuthenticated || (!!user && !isRealLogout.current);
   const isLoading = rawIsLoading && !user;
-
-  // Detect persistent session expiry. We do NOT react to transient
-  // rawIsAuthenticated flickers — those happen during normal silent-auth
-  // refreshes and cause false positives. Instead, sessionExpired is set
-  // only when a real token acquisition attempt fails hard.
-  const [sessionExpired, setSessionExpired] = useState(false);
-  const sessionExpiredRef = useRef(false);
-
-  // Provide a setter that dedupes and keeps the ref in sync
-  const markSessionExpired = useCallback((expired: boolean) => {
-    if (sessionExpiredRef.current === expired) return;
-    sessionExpiredRef.current = expired;
-    setSessionExpired(expired);
-  }, []);
 
   // Clear expiry when a fresh Auth0 session appears (user logged back in)
   useLayoutEffect(() => {
